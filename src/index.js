@@ -1982,7 +1982,7 @@ async function handleDatabaseInit(request, env, corsHeaders) {
         indexes_created: 15,
         wardrobe_items: wardrobeItems.length,
         character_photos: characters.length * outfits.length,
-        default_user: 'admin (password: password)'
+        default_user: 'admin (password: admin123)'
       }
     }), {
       headers: { 'Content-Type': 'application/json', ...corsHeaders }
