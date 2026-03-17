@@ -4,7 +4,7 @@
  */
 
 // API Configuration
-const API_BASE_URL = 'https://gf.xxzd.de5.net';
+const API_BASE_URL = '';
 
 // Character Data
 const CHARACTERS = {
