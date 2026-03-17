@@ -315,10 +315,11 @@ cloudflare-worker/
 ├── public/               # 静态文件（前端页面）
 │   ├── css/
 │   ├── js/
+│   ├── images/           # 预置的各种图片
 │   └── *.html
 ├── schema.sql            # 数据库结构
 ├── wrangler.toml         # Cloudflare 配置
-└── README.md            # 本文档
+└── README.md             # 本文档
 ```
 
 ## 数据库表结构
