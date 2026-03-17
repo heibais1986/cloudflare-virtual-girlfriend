@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>会员中心 - 虚拟女友</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Microsoft YaHei', sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 20px;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 50px;
+    }
+
+    .header h1 {
+      font-size: 2.5em;
+      color: #fff;
+      margin-bottom: 10px;
+      text-shadow: 0 0 20px rgba(236, 64, 122, 0.5);
+    }
+
+    .header p {
+      color: #a0a0a0;
+      font-size: 1.1em;
+    }
+
+    .pricing-container {
+      display: flex;
+      justify-content: center;
+      gap: 30px;
+      flex-wrap: wrap;
+      max-width: 1200px;
+    }
+
+    .pricing-card {
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      border-radius: 20px;
+      padding: 40px 30px;
+      width: 300px;
+      text-align: center;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .pricing-card:hover {
+      transform: translateY(-10px);
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+    }
+
+    .pricing-card.featured {
+      background: linear-gradient(135deg, #ec407a 0%, #d81b60 100%);
+      border: none;
+    }
+
+    .pricing-card.featured::before {
+      content: '最受欢迎';
+      position: absolute;
+      top: 20px;
+      right: -35px;
+      background: #ffd700;
+      color: #5d4037;
+      padding: 5px 40px;
+      font-size: 0.8em;
+      font-weight: bold;
+      transform: rotate(45deg);
+    }
+    html[lang="en"] .pricing-card.featured::before {
+      content: 'Most Popular';
+    }
+
+    .pricing-card .icon {
+      font-size: 3em;
+      margin-bottom: 20px;
+    }
+
+    .pricing-card h2 {
+      color: #fff;
+      font-size: 1.8em;
+      margin-bottom: 10px;
+    }
+
+    .pricing-card .price {
+      color: #fff;
+      font-size: 2.5em;
+      font-weight: bold;
+      margin: 20px 0;
+    }
+
+    .pricing-card .price span {
+      font-size: 0.4em;
+      font-weight: normal;
+    }
+
+    .pricing-card .features {
+      list-style: none;
+      margin: 30px 0;
+      text-align: left;
+    }
+
+    .pricing-card .features li {
+      color: rgba(255, 255, 255, 0.9);
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      align-items: center;
+    }
+
+    .pricing-card .features li::before {
+      content: '✓';
+      color: #4caf50;
+      margin-right: 10px;
+      font-weight: bold;
+    }
+
+    .pricing-card .btn {
+      display: block;
+      width: 100%;
+      padding: 15px 30px;
+      border-radius: 30px;
+      font-size: 1.1em;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      text-decoration: none;
+      margin-top: 20px;
+    }
+
+    .pricing-card .btn-primary {
+      background: #fff;
+      color: #ec407a;
+      border: none;
+    }
+
+    .pricing-card .btn-primary:hover {
+      background: #f8f8f8;
+      transform: scale(1.05);
+    }
+
+    .pricing-card.featured .btn-primary {
+      background: #ffd700;
+      color: #5d4037;
+    }
+
+    .pricing-card.featured .btn-primary:hover {
+      background: #ffea00;
+    }
+
+    .pricing-card .btn-outline {
+      background: transparent;
+      color: #fff;
+      border: 2px solid #fff;
+    }
+
+    .pricing-card .btn-outline:hover {
+      background: #fff;
+      color: #ec407a;
+    }
+
+    .back-btn {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      padding: 10px 20px;
+      background: rgba(255, 255, 255, 0.2);
+      color: #fff;
+      border: none;
+      border-radius: 20px;
+      cursor: pointer;
+      font-size: 0.9em;
+      transition: all 0.3s ease;
+    }
+
+    .back-btn:hover {
+      background: rgba(255, 255, 255, 0.3);
+    }
+
+    .vip-badge {
+      display: inline-block;
+      background: linear-gradient(135deg, #ffd700, #ffb300);
+      color: #5d4037;
+      padding: 3px 10px;
+      border-radius: 10px;
+      font-size: 0.7em;
+      font-weight: bold;
+      margin-left: 5px;
+    }
+
+    /* 支付弹窗样式 */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.7);
+      /* 默认隐藏，使用flex显示 */
+      display: none; 
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+      backdrop-filter: blur(5px);
+    }
+    .modal-content {
+      background: #fff;
+      padding: 30px;
+      border-radius: 20px;
+      text-align: center;
+      width: 320px;
+      color: #333;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+    .modal-content h3 {
+      margin-bottom: 25px;
+      color: #333;
+      font-size: 1.3em;
+    }
+    .payment-methods {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      margin-bottom: 20px;
+    }
+    .pay-btn {
+      padding: 15px;
+      border: none;
+      border-radius: 10px;
+      font-size: 1.1em;
+      font-weight: bold;
+      cursor: pointer;
+      color: #fff;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+    .pay-btn:hover {
+      opacity: 0.9;
+      transform: translateY(-2px);
+    }
+    .pay-btn.wechat {
+      background: #09bb07;
+    }
+    .pay-btn.alipay {
+      background: #1677ff;
+    }
+    .btn-close {
+      background: #f1f1f1;
+      color: #666;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-weight: bold;
+      transition: background 0.2s;
+    }
+    .btn-close:hover {
+      background: #e0e0e0;
+    }
+  </style>
+</head>
+<body>
+  <button class="back-btn" onclick="window.location.href='index.html'">← 返回</button>
+  
+  <div class="header">
+    <h1>升级会员 <span class="vip-badge">VIP</span></h1>
+    <p>解锁更多特权，与她更近距离接触</p>
+  </div>
+
+  <div class="pricing-container">
+    <!-- 免费版 -->
+    <div class="pricing-card">
+      <div class="icon">🆓</div>
+      <h2>免费版</h2>
+      <div class="price">¥0<span>/月</span></div>
+      <ul class="features">
+        <li>基础对话功能</li>
+        <li>语音回复</li>
+        <li>有限的自定义选项</li>
+        <li>广告展示</li>
+      </ul>
+      <button class="btn btn-outline">当前版本</button>
+    </div>
+
+    <!-- 月卡 -->
+    <div class="pricing-card featured">
+      <div class="icon">⭐</div>
+      <h2>月卡会员</h2>
+      <div class="price">¥29<span>/月</span></div>
+      <ul class="features">
+        <li>无限对话次数</li>
+        <li>专属语音克隆</li>
+        <li>自定义头像</li>
+        <li>无广告体验</li>
+        <li>优先客服支持</li>
+      </ul>
+      <button class="btn btn-primary" onclick="selectPlan('monthly')">立即开通</button>
+    </div>
+
+    <!-- 年卡 -->
+    <div class="pricing-card">
+      <div class="icon">👑</div>
+      <h2>年卡会员</h2>
+      <div class="price">¥199<span>/年</span></div>
+      <ul class="features">
+        <li>月卡全部特权</li>
+        <li>专属虚拟形象</li>
+        <li>高级互动功能</li>
+        <li>生日祝福定制</li>
+        <li>独家周边礼品</li>
+        <li>永久VIP标识</li>
+      </ul>
+      <button class="btn btn-primary" onclick="selectPlan('yearly')">立即开通</button>
+    </div>
+  </div>
+
+  <!-- 支付方式选择弹窗 (中文国内支付时使用) -->
+  <div class="modal-overlay" id="payment-modal">
+    <div class="modal-content">
+      <h3 id="modal-title">选择支付方式</h3>
+      <div class="payment-methods">
+        <button class="pay-btn wechat" onclick="processDomesticPayment('wechat')">
+          <span>❖</span> 微信支付
+        </button>
+        <button class="pay-btn alipay" onclick="processDomesticPayment('alipay')">
+          <span>❖</span> 支付宝
+        </button>
+      </div>
+      <button class="btn-close" onclick="closePaymentModal()">取消选择</button>
+    </div>
+  </div>
+
+  <script>
+    // 语言处理
+    const urlParams = new URLSearchParams(window.location.search);
+    const lang = urlParams.get('lang') || 'zh';
+    document.documentElement.lang = lang;
+
+    const t = {
+      zh: {
+        back: '← 返回',
+        alertLogin: '请先登录后再开通会员',
+        vipSuccess: 'VIP购买成功！您的会员有效期至：',
+        vipFail: '购买失败，请稍后重试',
+        vipErrorMsg: '购买失败，请重试',
+        vipStatus: '您已是VIP会员，有效期至：',
+        permanent: '永久'
+      },
+      en: {
+        pageTitle: 'VIP Center - Virtual Girlfriend',
+        back: '← Back',
+        headerTitle: 'Upgrade to VIP <span class="vip-badge">VIP</span>',
+        headerDesc: 'Unlock more privileges and get closer to her',
+        freeTitle: 'Free Plan',
+        freePrice: '$0<span>/mo</span>',
+        freeFeatures: ['Basic Chat Functionality', 'Voice Replies', 'Limited Customization', 'Ad Display'],
+        freeBtn: 'Current Plan',
+        monthlyTitle: 'Monthly Plan',
+        monthlyPrice: '$4.99<span>/mo</span>',
+        monthlyFeatures: ['Unlimited Chats', 'Exclusive Voice Cloning', 'Custom Avatar', 'Ad-Free Experience', 'Priority Customer Support'],
+        monthlyBtn: 'Subscribe Now',
+        yearlyTitle: 'Yearly Plan',
+        yearlyPrice: '$39.99<span>/yr</span>',
+        yearlyFeatures: ['All Monthly Privileges', 'Exclusive Virtual Avatar', 'Advanced Interaction Features', 'Custom Birthday Wishes', 'Exclusive Merch Gifts', 'Permanent VIP Badge'],
+        yearlyBtn: 'Subscribe Now',
+        alertLogin: 'Please login first to upgrade to VIP.',
+        vipSuccess: 'VIP purchase successful! Valid until: ',
+        vipFail: 'Purchase failed, please try again later.',
+        vipErrorMsg: 'Purchase failed, please try again.',
+        vipStatus: 'You are already a VIP member, valid until: ',
+        permanent: 'Permanent'
+      }
+    };
+
+    // 应用英文翻译
+    if (lang === 'en') {
+      document.title = t.en.pageTitle;
+      document.querySelector('.back-btn').textContent = t.en.back;
+      document.querySelector('.header h1').innerHTML = t.en.headerTitle;
+      document.querySelector('.header p').innerHTML = t.en.headerDesc;
+      
+      const cards = document.querySelectorAll('.pricing-card');
+      
+      // 免费版
+      cards[0].querySelector('h2').textContent = t.en.freeTitle;
+      cards[0].querySelector('.price').innerHTML = t.en.freePrice;
+      const freeLi = cards[0].querySelectorAll('.features li');
+      t.en.freeFeatures.forEach((text, i) => { if (freeLi[i]) freeLi[i].textContent = text; });
+      cards[0].querySelector('.btn').textContent = t.en.freeBtn;
+
+      // 月卡会员
+      cards[1].querySelector('h2').textContent = t.en.monthlyTitle;
+      cards[1].querySelector('.price').innerHTML = t.en.monthlyPrice;
+      const monthlyLi = cards[1].querySelectorAll('.features li');
+      t.en.monthlyFeatures.forEach((text, i) => { if (monthlyLi[i]) monthlyLi[i].textContent = text; });
+      cards[1].querySelector('.btn').textContent = t.en.monthlyBtn;
+
+      // 年卡会员
+      cards[2].querySelector('h2').textContent = t.en.yearlyTitle;
+      cards[2].querySelector('.price').innerHTML = t.en.yearlyPrice;
+      const yearlyLi = cards[2].querySelectorAll('.features li');
+      t.en.yearlyFeatures.forEach((text, i) => { if (yearlyLi[i]) yearlyLi[i].textContent = text; });
+      cards[2].querySelector('.btn').textContent = t.en.yearlyBtn;
+    }
+
+    const currentT = lang === 'en' ? t.en : t.zh;
+
+    // API 配置
+    const API_BASE_URL = '';  // 空字符串表示使用当前域名
+    let selectedPlanId = '';
+    
+    function selectPlan(plan) {
+      // 获取当前用户
+      const userStr = localStorage.getItem('user');
+      if (!userStr) {
+        // 未登录，跳转登录
+        alert(currentT.alertLogin);
+        window.location.href = 'auth.html?lang=' + lang;
+        return;
+      }
+      
+      selectedPlanId = plan;
+
+      if (lang === 'en') {
+        // 英文环境，强制走海外支付渠道 (如 Lemon Squeezy)
+        processOverseasPayment(plan);
+      } else {
+        // 中文环境，打开弹窗选择微信/支付宝 (对接如 XorPay)
+        openPaymentModal();
+      }
+    }
+
+    function openPaymentModal() {
+      document.getElementById('payment-modal').style.display = 'flex';
+    }
+
+    function closePaymentModal() {
+      document.getElementById('payment-modal').style.display = 'none';
+      selectedPlanId = '';
+    }
+
+    // 处理国内聚合支付调用 (微信/支付宝)
+    function processDomesticPayment(method) {
+      closePaymentModal();
+      const token = localStorage.getItem('token');
+      
+      fetch(API_BASE_URL + '/api/vip/purchase/domestic', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + token
+        },
+        body: JSON.stringify({ plan_id: selectedPlanId, pay_method: method })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.status === 'ok' && data.pay_url) {
+          // 跳转到聚合支付平台的收银台或者二维码页面
+          window.location.href = data.pay_url;
+        } else {
+          alert(data.error || '获取支付链接失败，请重试');
+        }
+      })
+      .catch(error => {
+        console.error('Error:', error);
+        alert(currentT.vipFail);
+      });
+    }
+
+    // 处理海外支付调用 (如 Lemon Squeezy, Stripe等)
+    function processOverseasPayment(plan) {
+      alert("Redirecting to secure overseas checkout...");
+      const token = localStorage.getItem('token');
+      
+      fetch(API_BASE_URL + '/api/vip/purchase/overseas', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + token
+        },
+        body: JSON.stringify({ plan_id: plan })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.status === 'ok' && data.checkout_url) {
+          // 跳转到海外支付机构托管的结账页面
+          window.location.href = data.checkout_url;
+        } else {
+          alert(data.error || currentT.vipErrorMsg);
+        }
+      })
+      .catch(error => {
+        console.error('Error:', error);
+        alert(currentT.vipFail);
+      });
+    }
+    
+    // 页面加载时获取VIP状态
+    window.addEventListener('load', () => {
+      const token = localStorage.getItem('token');
+      if (token) {
+        fetch(API_BASE_URL + '/api/auth/check', {
+          headers: {
+            'Authorization': 'Bearer ' + token
+          }
+        })
+        .then(response => response.json())
+        .then(data => {
+          if (data.authenticated && data.user.is_vip) {
+            // 用户已是VIP
+            document.querySelector('.header p').textContent = currentT.vipStatus + 
+              (data.user.vip_expires_at ? new Date(data.user.vip_expires_at).toLocaleDateString() : currentT.permanent);
+          }
+        });
+      }
+    });
+  </script>
+</body>
+</html>

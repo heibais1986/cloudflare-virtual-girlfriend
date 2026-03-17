@@ -1,0 +1,35 @@
+name = "virtual-girlfriend-api"
+main = "src/index.js"
+compatibility_date = "2024-01-01"
+
+# Serve static files from public directory (landing.html as index)
+[assets]
+directory = "./public"
+binding = "ASSETS"
+html_handling = "auto-trailing-slash"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "virtual-girlfriend"
+database_id = "your-database-id-here"
+
+# R2 bucket for media storage (photos/videos)
+[[r2_buckets]]
+binding = "R2_BUCKET"
+bucket_name = "virtual-girlfriend-media"
+
+[ai]
+binding = "AI"
+
+[observability]
+enabled = false
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+invocation_logs = true
+
+[observability.traces]
+enabled = false
+head_sampling_rate = 1

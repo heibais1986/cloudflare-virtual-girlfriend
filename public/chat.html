@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Chat - Virtual Girlfriend</title>
+  
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+  
+  <link rel="stylesheet" href="css/chat.css" />
+</head>
+<body>
+  <div class="chat-page">
+    <!-- Left Sidebar - Chat Sessions List -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <h2 class="sidebar-title">My Chats</h2>
+        <button class="btn btn--ghost btn--new-chat" id="new-chat-btn" title="New Chat">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 5v14M5 12h14"/>
+          </svg>
+        </button>
+      </div>
+      
+      <div class="session-list" id="session-list">
+        <!-- Sessions will be rendered by JavaScript -->
+        <div class="session-loading">
+          <div class="spinner"></div>
+        </div>
+      </div>
+      
+      <!-- Sidebar Footer - Login/User Info -->
+      <div class="sidebar-footer" id="sidebar-footer">
+        <button class="btn btn--outline btn--login" id="sidebar-auth-btn">Login</button>
+      </div>
+    </aside>
+    
+    <!-- Main Chat Window -->
+    <main class="chat-main">
+      <!-- Chat Header -->
+      <header class="chat-header">
+        <button class="btn btn--icon btn--menu" id="menu-btn" title="Toggle Sidebar">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 12h18M3 6h18M3 18h18"/>
+          </svg>
+        </button>
+        
+        <div class="chat-header__info" id="chat-header-info">
+          <img src="images/yuki.png" alt="Character" class="chat-avatar" id="chat-avatar">
+          <div class="chat-name">
+            <h3 id="chat-title">Yuki</h3>
+            <span class="chat-status" id="chat-status">Online</span>
+          </div>
+        </div>
+        
+        <div class="chat-header__actions">
+          <button class="btn btn--icon" id="call-btn" title="Voice Call">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+            </svg>
+          </button>
+        </div>
+      </header>
+      
+      <!-- Chat Messages -->
+      <div class="chat-messages" id="chat-messages">
+        <!-- Messages will be rendered by JavaScript -->
+      </div>
+      
+      <!-- Chat Input -->
+      <footer class="chat-input">
+        <div class="input-wrapper">
+          <input type="text" 
+                 id="message-input" 
+                 placeholder="Type a message..." 
+                 maxlength="240"
+                 autocomplete="off">
+          <span class="char-counter" id="char-counter">0 / 240</span>
+        </div>
+        <button class="btn btn--primary btn--send" id="send-btn">Send</button>
+        <button class="btn btn--icon btn--voice" id="voice-btn" title="Voice Input">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+            <line x1="12" y1="19" x2="12" y2="23"/>
+            <line x1="8" y1="23" x2="16" y2="23"/>
+          </svg>
+        </button>
+      </footer>
+    </main>
+    
+    <!-- Right Info Panel -->
+    <aside class="info-panel" id="info-panel">
+      <!-- Profile Card -->
+      <div class="profile-card">
+        <div class="profile-card__avatar">
+          <img src="images/yuki.png" alt="Character" id="profile-avatar">
+        </div>
+        <h3 class="profile-card__name" id="profile-name">Yuki</h3>
+        <div class="profile-card__tags" id="profile-tags">
+          <span class="tag">Gentle</span>
+          <span class="tag">Caring</span>
+          <span class="tag">Shy</span>
+        </div>
+        <div class="profile-card__actions">
+          <button class="btn btn--secondary btn--request" id="request-photo-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+              <circle cx="12" cy="13" r="4"/>
+            </svg>
+            Request Photo
+          </button>
+          <div class="action-buttons">
+            <button class="btn btn--icon btn--like" id="like-btn" title="Like">❤️</button>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Media Gallery -->
+      <div class="media-gallery">
+        <div class="media-tabs">
+          <button class="tab tab--active" data-tab="photos">Photos</button>
+          <button class="tab" data-tab="videos">Videos</button>
+        </div>
+        
+        <div class="media-grid" id="media-grid">
+          <!-- Media items will be rendered by JavaScript -->
+          <!-- Demo items for now -->
+          <div class="media-item media-item--locked">
+            <div class="media-blur" style="background: linear-gradient(135deg, #1a1a2e, #2d2d44);"></div>
+            <div class="media-lock">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+              </svg>
+              <span>VIP Only</span>
+            </div>
+          </div>
+          <div class="media-item media-item--locked">
+            <div class="media-blur" style="background: linear-gradient(135deg, #2d1a2e, #442d44);"></div>
+            <div class="media-lock">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+              </svg>
+              <span>VIP Only</span>
+            </div>
+          </div>
+          <div class="media-item media-item--locked">
+            <div class="media-blur" style="background: linear-gradient(135deg, #1a2d2e, #2d4444);"></div>
+            <div class="media-lock">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+              </svg>
+              <span>VIP Only</span>
+            </div>
+          </div>
+          <div class="media-item media-item--locked">
+            <div class="media-blur" style="background: linear-gradient(135deg, #2d2d1a, #44442d);"></div>
+            <div class="media-lock">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+              </svg>
+              <span>VIP Only</span>
+            </div>
+          </div>
+        </div>
+        
+        <button class="btn btn--ghost btn--clear" id="clear-history-btn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"/>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+          </svg>
+          Clear Chat History
+        </button>
+      </div>
+    </aside>
+  </div>
+  
+  <!-- VIP Modal -->
+  <div class="vip-modal-overlay" id="vip-modal" style="display: none;">
+    <div class="vip-modal">
+      <button class="vip-modal-close" id="vip-modal-close">×</button>
+      <div class="vip-modal-left">
+        <img src="images/yuki.png" alt="Character" class="vip-modal-img" id="vip-modal-img">
+        <div class="vip-modal-warning-icon">
+          <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M50 15L10 85H90L50 15Z" stroke="white" stroke-width="8" stroke-linejoin="round" fill="none"/>
+            <path d="M50 35V60" stroke="white" stroke-width="8" stroke-linecap="round"/>
+            <circle cx="50" cy="75" r="4" fill="white"/>
+          </svg>
+        </div>
+      </div>
+      <div class="vip-modal-right">
+        <h2 class="vip-modal-title">SUBSCRIBERS ONLY<br><span>仅限订阅者</span></h2>
+        <p class="vip-modal-desc">This feature is for paid members only. <span class="vip-modal-highlight">Please upgrade!</span></p>
+        <p class="vip-modal-desc-zh">这项功能仅限付费会员使用。请升级！</p>
+        <button class="vip-modal-btn" id="vip-modal-upgrade">Upgrade 升级</button>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Photo Request Dialog -->
+  <div class="photo-dialog-overlay" id="photo-dialog" style="display: none;">
+    <div class="photo-dialog">
+      <!-- Header -->
+      <div class="photo-dialog__header">
+        <h3>📸 Request Photo</h3>
+        <button class="photo-dialog__close" id="photo-dialog-close">×</button>
+      </div>
+      
+      <!-- Body -->
+      <div class="photo-dialog__body">
+        <!-- Selection View -->
+        <div class="photo-dialog__selection" id="photo-selection-view">
+          <div class="photo-dialog__section">
+            <h4 data-i18n="chooseOutfit">👗 Choose Outfit</h4>
+            <div class="wardrobe-grid" id="clothing-grid"></div>
+          </div>
+          <div class="photo-dialog__section">
+            <h4 data-i18n="chooseAccessories">💍 Choose Accessories</h4>
+            <div class="wardrobe-grid" id="accessories-grid"></div>
+          </div>
+        </div>
+        
+        <!-- Generating View -->
+        <div class="photo-dialog__generating" id="photo-generating-view" style="display: none;">
+          <div class="generating-animation"></div>
+          <div class="generating-text" data-i18n="generating">Generating your photo...</div>
+          <div class="generating-progress">
+            <div class="generating-progress-bar"></div>
+          </div>
+        </div>
+        
+        <!-- Result View -->
+        <div class="photo-dialog__result" id="photo-result-view" style="display: none;">
+          <div class="result-title">✨ <span data-i18n="photoReady">Your photo is ready!</span> ✨</div>
+          <img class="result-image" id="result-image" src="" alt="Generated photo">
+          <div class="result-actions">
+            <button class="btn btn--ghost" id="download-btn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              <span data-i18n="download">Download</span>
+            </button>
+            <button class="btn btn--primary" id="send-to-chat-btn">
+              <span data-i18n="sendToChat">Send to Chat</span> 💬
+            </button>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Footer -->
+      <div class="photo-dialog__footer" id="photo-dialog-footer">
+        <button class="btn btn--ghost" id="photo-cancel" data-i18n="cancel">Cancel</button>
+        <button class="btn btn--primary" id="photo-generate" disabled>
+          <span data-i18n="generate">Generate</span> 📸
+        </button>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Header Buttons (fixed position) -->
+  <button id="lang-switch" class="btn btn--ghost lang-switch">EN/中</button>
+  <button id="auth-btn" class="btn btn--outline auth-btn">Login</button>
+  <a href="landing.html" class="btn btn--ghost back-btn" title="Back to Characters">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M19 12H5M12 19l-7-7 7-7"/>
+    </svg>
+  </a>
+  <button id="vip-btn" class="btn btn--vip">VIP</button>
+  
+  <script src="js/chat.js"></script>
+</body>
+</html>

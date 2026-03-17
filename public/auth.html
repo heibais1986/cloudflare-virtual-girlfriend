@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Login - Virtual Girlfriend</title>
+  <link rel="stylesheet" href="css/style.css" />
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Microsoft YaHei', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+    }
+
+    .auth-container {
+      width: 100%;
+      max-width: 420px;
+      background: rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(20px);
+      border-radius: 24px;
+      padding: 40px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 0 25px 50px rgba(0, 0, 0, 0.3);
+    }
+
+    .auth-logo {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+
+    .auth-logo h1 {
+      color: #fff;
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .auth-logo p {
+      color: rgba(255, 255, 255, 0.6);
+      font-size: 14px;
+    }
+
+    .auth-tabs {
+      display: flex;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 12px;
+      padding: 4px;
+      margin-bottom: 30px;
+    }
+
+    .auth-tab {
+      flex: 1;
+      padding: 12px;
+      text-align: center;
+      color: rgba(255, 255, 255, 0.6);
+      font-size: 15px;
+      font-weight: 600;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      border: none;
+      background: transparent;
+    }
+
+    .auth-tab.active {
+      background: linear-gradient(135deg, #e91e63 0%, #9c27b0 100%);
+      color: #fff;
+      box-shadow: 0 4px 15px rgba(233, 30, 99, 0.4);
+    }
+
+    .auth-form {
+      display: none;
+    }
+
+    .auth-form.active {
+      display: block;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-group label {
+      display: block;
+      color: rgba(255, 255, 255, 0.8);
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 8px;
+    }
+
+    .form-group input {
+      width: 100%;
+      padding: 14px 16px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      color: #fff;
+      font-size: 15px;
+      transition: all 0.3s ease;
+    }
+
+    .form-group input:focus {
+      outline: none;
+      border-color: #e91e63;
+      background: rgba(255, 255, 255, 0.1);
+      box-shadow: 0 0 0 3px rgba(233, 30, 99, 0.2);
+    }
+
+    .form-group input::placeholder {
+      color: rgba(255, 255, 255, 0.3);
+    }
+
+    .submit-btn {
+      width: 100%;
+      padding: 16px;
+      background: linear-gradient(135deg, #e91e63 0%, #9c27b0 100%);
+      border: none;
+      border-radius: 12px;
+      color: #fff;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      margin-top: 10px;
+    }
+
+    .submit-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 25px rgba(233, 30, 99, 0.4);
+    }
+
+    .submit-btn:active {
+      transform: translateY(0);
+    }
+
+    .submit-btn:disabled {
+      opacity: 0.7;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .error-message {
+      background: rgba(244, 67, 54, 0.1);
+      border: 1px solid rgba(244, 67, 54, 0.3);
+      color: #f44336;
+      padding: 12px 16px;
+      border-radius: 10px;
+      font-size: 13px;
+      margin-bottom: 20px;
+      display: none;
+    }
+
+    .error-message.show {
+      display: block;
+    }
+
+    .success-message {
+      background: rgba(76, 175, 80, 0.1);
+      border: 1px solid rgba(76, 175, 80, 0.3);
+      color: #4caf50;
+      padding: 12px 16px;
+      border-radius: 10px;
+      font-size: 13px;
+      margin-bottom: 20px;
+      display: none;
+    }
+
+    .success-message.show {
+      display: block;
+    }
+
+    .divider {
+      display: flex;
+      align-items: center;
+      margin: 25px 0;
+      color: rgba(255, 255, 255, 0.3);
+      font-size: 13px;
+    }
+
+    .divider::before,
+    .divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .divider span {
+      padding: 0 15px;
+    }
+
+    .social-login {
+      display: flex;
+      gap: 12px;
+    }
+
+    .social-btn {
+      flex: 1;
+      padding: 12px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .social-btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    .lang-switch {
+      position: fixed;
+      top: 15px;
+      right: 15px;
+      padding: 8px 15px;
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 20px;
+      font-size: 0.85em;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      z-index: 1000;
+    }
+
+    .lang-switch:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+  </style>
+</head>
+<body>
+  <button id="lang-switch" class="lang-switch">EN/中</button>
+  
+  <div class="auth-container">
+    <div class="auth-logo">
+      <h1>💕 Virtual Girlfriend</h1>
+      <p id="logo-subtitle">Create your perfect AI companion</p>
+    </div>
+
+    <div class="auth-tabs">
+      <button class="auth-tab active" data-tab="login" id="tab-login">Login</button>
+      <button class="auth-tab" data-tab="register" id="tab-register">Register</button>
+    </div>
+
+    <div class="error-message" id="error-msg"></div>
+    <div class="success-message" id="success-msg"></div>
+
+    <!-- Login Form -->
+    <form class="auth-form active" id="login-form">
+      <div class="form-group">
+        <label id="label-username">Username</label>
+        <input type="text" id="login-username" placeholder="Enter your username" required />
+      </div>
+      <div class="form-group">
+        <label id="label-password">Password</label>
+        <input type="password" id="login-password" placeholder="Enter your password" required />
+      </div>
+      <button type="submit" class="submit-btn" id="login-btn">Login</button>
+    </form>
+
+    <!-- Register Form -->
+    <form class="auth-form" id="register-form">
+      <div class="form-group">
+        <label id="label-reg-username">Username</label>
+        <input type="text" id="reg-username" placeholder="Choose a username" required />
+      </div>
+      <div class="form-group">
+        <label id="label-email">Email</label>
+        <input type="email" id="reg-email" placeholder="Enter your email" required />
+      </div>
+      <div class="form-group">
+        <label id="label-reg-password">Password</label>
+        <input type="password" id="reg-password" placeholder="Create a password (min 6 chars)" required />
+      </div>
+      <div class="form-group">
+        <label id="label-confirm">Confirm Password</label>
+        <input type="password" id="reg-confirm" placeholder="Confirm your password" required />
+      </div>
+      <button type="submit" class="submit-btn" id="register-btn">Create Account</button>
+    </form>
+  </div>
+
+  <script>
+    // API Configuration - Cloudflare Worker API
+    const API_BASE_URL = 'https://gf.xxzd.de5.net';
+
+    // Language translations
+    const translations = {
+      en: {
+        logoSubtitle: 'Create your perfect AI companion',
+        tabLogin: 'Login',
+        tabRegister: 'Register',
+        labelUsername: 'Username',
+        labelPassword: 'Password',
+        labelEmail: 'Email',
+        labelRegUsername: 'Username',
+        labelRegPassword: 'Password',
+        labelConfirm: 'Confirm Password',
+        loginBtn: 'Login',
+        registerBtn: 'Create Account',
+        loginPlaceholder: 'Enter your username',
+        passwordPlaceholder: 'Enter your password',
+        emailPlaceholder: 'Enter your email',
+        regUsernamePlaceholder: 'Choose a username',
+        regPasswordPlaceholder: 'Create a password (min 6 chars)',
+        confirmPlaceholder: 'Confirm your password',
+        langSwitch: '中/EN',
+        fillAllFields: 'Please fill in all fields',
+        passwordMinLength: 'Password must be at least 6 characters',
+        passwordMismatch: 'Passwords do not match'
+      },
+      zh: {
+        logoSubtitle: '创建你完美的AI伴侣',
+        tabLogin: '登录',
+        tabRegister: '注册',
+        labelUsername: '用户名',
+        labelPassword: '密码',
+        labelEmail: '邮箱',
+        labelRegUsername: '用户名',
+        labelRegPassword: '密码',
+        labelConfirm: '确认密码',
+        loginBtn: '登录',
+        registerBtn: '创建账号',
+        loginPlaceholder: '输入用户名',
+        passwordPlaceholder: '输入密码',
+        emailPlaceholder: '输入邮箱地址',
+        regUsernamePlaceholder: '输入用户名',
+        regPasswordPlaceholder: '创建密码（至少6位）',
+        confirmPlaceholder: '确认密码',
+        langSwitch: 'EN/中',
+        fillAllFields: '请填写所有字段',
+        passwordMinLength: '密码至少6个字符',
+        passwordMismatch: '两次密码不一致',
+        invalidEmail: '请输入有效的邮箱地址'
+      }
+    };
+
+    let currentLang = 'en';
+
+    // Translation helper
+    function t(key) {
+      return translations[currentLang][key] || translations['en'][key] || key;
+    }
+
+    // Switch language
+    function switchLanguage() {
+      currentLang = currentLang === 'en' ? 'zh' : 'en';
+      
+      document.getElementById('logo-subtitle').textContent = t('logoSubtitle');
+      document.getElementById('tab-login').textContent = t('tabLogin');
+      document.getElementById('tab-register').textContent = t('tabRegister');
+      document.getElementById('label-username').textContent = t('labelUsername');
+      document.getElementById('label-password').textContent = t('labelPassword');
+      document.getElementById('label-email').textContent = t('labelEmail');
+      document.getElementById('label-reg-username').textContent = t('labelRegUsername');
+      document.getElementById('label-reg-password').textContent = t('labelRegPassword');
+      document.getElementById('label-confirm').textContent = t('labelConfirm');
+      document.getElementById('login-btn').textContent = t('loginBtn');
+      document.getElementById('register-btn').textContent = t('registerBtn');
+      document.getElementById('login-username').placeholder = t('loginPlaceholder');
+      document.getElementById('login-password').placeholder = t('passwordPlaceholder');
+      document.getElementById('reg-email').placeholder = t('emailPlaceholder');
+      document.getElementById('reg-username').placeholder = t('regUsernamePlaceholder');
+      document.getElementById('reg-password').placeholder = t('regPasswordPlaceholder');
+      document.getElementById('reg-confirm').placeholder = t('confirmPlaceholder');
+      document.getElementById('lang-switch').textContent = t('langSwitch');
+    }
+
+    // Tab switching
+    document.querySelectorAll('.auth-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
+        
+        tab.classList.add('active');
+        document.getElementById(tab.dataset.tab + '-form').classList.add('active');
+        
+        hideMessages();
+      });
+    });
+
+    // Language switch button
+    document.getElementById('lang-switch').addEventListener('click', switchLanguage);
+
+    // Show/hide messages
+    function showError(msg) {
+      const el = document.getElementById('error-msg');
+      el.textContent = msg;
+      el.classList.add('show');
+      document.getElementById('success-msg').classList.remove('show');
+    }
+
+    function showSuccess(msg) {
+      const el = document.getElementById('success-msg');
+      el.textContent = msg;
+      el.classList.add('show');
+      document.getElementById('error-msg').classList.remove('show');
+    }
+
+    function hideMessages() {
+      document.getElementById('error-msg').classList.remove('show');
+      document.getElementById('success-msg').classList.remove('show');
+    }
+
+    // Login form submission
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      hideMessages();
+
+      const username = document.getElementById('login-username').value.trim();
+      const password = document.getElementById('login-password').value;
+
+      if (!username || !password) {
+        showError(t('fillAllFields'));
+        return;
+      }
+
+      const btn = document.getElementById('login-btn');
+      btn.disabled = true;
+      btn.textContent = currentLang === 'en' ? 'Logging in...' : '登录中...';
+
+      try {
+        const response = await fetch(API_BASE_URL + '/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+
+        const data = await response.json();
+
+        if (response.ok && data.status === 'ok') {
+          // Save token and user info
+          localStorage.setItem('token', data.token);
+          localStorage.setItem('user', JSON.stringify(data.user));
+          
+          showSuccess(currentLang === 'en' ? 'Login successful!' : '登录成功！');
+          
+          // Redirect to previous page or main page after 1 second
+          setTimeout(() => {
+            const params = new URLSearchParams(window.location.search);
+            const redirect = params.get('redirect') || 'chat.html';
+            window.location.href = redirect;
+          }, 1000);
+        } else {
+          showError(data.error || (currentLang === 'en' ? 'Login failed' : '登录失败'));
+        }
+      } catch (error) {
+        console.error('Login error:', error);
+        showError(currentLang === 'en' ? 'Connection error. Please try again.' : '连接错误，请重试。');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = t('loginBtn');
+      }
+    });
+
+    // Register form submission
+    document.getElementById('register-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      hideMessages();
+
+      const username = document.getElementById('reg-username').value.trim();
+      const email = document.getElementById('reg-email').value.trim();
+      const password = document.getElementById('reg-password').value;
+      const confirm = document.getElementById('reg-confirm').value;
+
+      if (!username || !email || !password || !confirm) {
+        showError(t('fillAllFields'));
+        return;
+      }
+
+      // Email validation
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        showError(t('invalidEmail') || 'Please enter a valid email address');
+        return;
+      }
+
+      if (password.length < 6) {
+        showError(t('passwordMinLength'));
+        return;
+      }
+
+      if (password !== confirm) {
+        showError(t('passwordMismatch'));
+        return;
+      }
+
+      const btn = document.getElementById('register-btn');
+      btn.disabled = true;
+      btn.textContent = currentLang === 'en' ? 'Creating account...' : '创建账号中...';
+
+      try {
+        const response = await fetch(API_BASE_URL + '/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, email, password })
+        });
+
+        const data = await response.json();
+
+        if (response.ok && data.status === 'ok') {
+          // Save token and user info
+          localStorage.setItem('token', data.token);
+          localStorage.setItem('user', JSON.stringify(data.user));
+          
+          showSuccess(currentLang === 'en' ? 'Account created successfully!' : '账号创建成功！');
+          
+          // Redirect to previous page or main page after 1 second
+          setTimeout(() => {
+            const params = new URLSearchParams(window.location.search);
+            const redirect = params.get('redirect') || 'chat.html';
+            window.location.href = redirect;
+          }, 1000);
+        } else {
+          showError(data.error || (currentLang === 'en' ? 'Registration failed' : '注册失败'));
+        }
+      } catch (error) {
+        console.error('Register error:', error);
+        showError(currentLang === 'en' ? 'Connection error. Please try again.' : '连接错误，请重试。');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = t('registerBtn');
+      }
+    });
+  </script>
+</body>
+</html>
