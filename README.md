@@ -318,4 +318,19 @@ cloudflare-worker/
 
 ## 许可证
 
-MIT License
+Apache-2.0 license
+
+## 赞助我
+
+本人自去年大厂毕业后就一直没有收入，纯靠独立开发勉强度日。如果本项目对您有帮助，可以请我喝杯咖啡，谢谢！
+
+微信支付 (WeChat Pay)
+	![image](https://github.com/user-attachments/assets/a5c5ac9f-b3d0-4244-bed5-48116cec5dce)
+
+
+支付宝 (Alipay)
+	![image](https://github.com/user-attachments/assets/72fb93f9-0bb3-48da-bac9-89d5f7960da7)
+
+ETH: 0x143C6b1A6893efafc8F2f76E93dfD08b1441c29a
+
+SOL: 6GTQQNBuDySX7DAsF4mAxjuYygMZ4qfqnMDX4pDKGVds
