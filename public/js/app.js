@@ -1,7 +1,7 @@
 // Virtual Girlfriend App
 
 // API 配置 - 使用 Cloudflare Worker API
-const API_BASE_URL = 'https://gf.xxzd.de5.net'; // Cloudflare Worker URL
+const API_BASE_URL = ''; // Cloudflare Worker URL
 
 // Language translations
 const translations = {
