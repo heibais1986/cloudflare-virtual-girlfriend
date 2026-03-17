@@ -5,6 +5,18 @@
 因为 Cloudflare 的tts模型对于中文支持很差，所以默认界面是英文，聊天也尽量使用英文。 富哥或不习惯英文的用户请自行注册ElevenLabs或使用CosyVoice2来支持中文（音色克隆由于成本原因未开发，接入ElevenLabs或CosyVoice2可支持）。
 最后，所有的VIP功能，都是使用的 Cloudflare 每天提供的免费AI配额，所以效果一般，富哥或要求较高的用户可以自行接入其他更加智能的模型。
 
+## 一键部署
+
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/heibais1986/cloudflare-virtual-girlfriend)
+
+点击上方按钮即可一键部署到 Cloudflare Workers！部署完成后，请访问 `https://你的域名/init` 完成数据库初始化。
+
+**部署后步骤：**
+1. 点击部署按钮，按提示完成 Cloudflare 授权和部署
+2. 部署完成后，访问 `https://你的域名/init` 初始化数据库
+3. 使用默认账号登录：用户名 `admin`，密码 `password`
+4. 开始与你的虚拟女友聊天吧！💕
+
 ## 功能特性
 
 ### 核心功能
@@ -35,7 +47,41 @@
 
 ## 快速开始
 
-### 1. 前置要求
+### 方案一：一键部署（推荐）
+
+最简单的部署方式，无需安装任何本地工具：
+
+1. **点击部署按钮**
+   
+   [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/heibais1986/cloudflare-virtual-girlfriend)
+
+2. **登录 Cloudflare 账号**
+   
+   按页面提示授权 Cloudflare 访问你的 GitHub 仓库
+
+3. **自动部署**
+   
+   系统会自动创建 D1 数据库、R2 存储桶并部署 Worker
+
+4. **初始化数据库**
+   
+   部署完成后，访问 `https://你的域名/init` 完成数据库初始化
+   
+   你会看到成功提示：`{"success": true, "message": "Database initialized successfully"}`
+
+5. **开始使用**
+   
+   - 访问 `https://你的域名` 打开应用
+   - 使用默认账号登录：用户名 `admin`，密码 `admin123`
+   - 开始与你的虚拟女友聊天！
+
+---
+
+### 方案二：手动部署（开发者）
+
+如果你需要本地开发或自定义修改，可以使用手动部署：
+
+#### 1. 前置要求
 
 - [Node.js](https://nodejs.org/) 18+
 - [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/install-and-update/)
@@ -43,20 +89,20 @@
 npm install -g wrangler
 ```
 
-### 2. 克隆本项目
+#### 2. 克隆本项目
 
 ```bash
 git clone https://github.com/heibais1986/cloudflare-virtual-girlfriend.git
 cd cloudflare-worker
 ```
 
-### 3. 登录 Cloudflare
+#### 3. 登录 Cloudflare
 
 ```bash
 wrangler login
 ```
 
-### 4. 创建 D1 数据库
+#### 4. 创建 D1 数据库
 
 ```bash
 wrangler d1 create virtual-girlfriend
@@ -71,19 +117,25 @@ database_name = "virtual-girlfriend"
 database_id = "your-database-id-here"
 ```
 
-### 5. 创建 R2 Bucket
+#### 5. 创建 R2 Bucket
 
 ```bash
 wrangler r2 bucket create virtual-girlfriend-media
 ```
 
-### 6. 初始化数据库
+#### 6. 初始化数据库
+
+**方式 A：通过 Web 界面（推荐）**
+
+部署后访问 `https://你的域名/init` 自动初始化
+
+**方式 B：通过命令行**
 
 ```bash
 wrangler d1 execute virtual-girlfriend --file=./schema.sql
 ```
 
-### 7. 本地开发
+#### 7. 本地开发
 
 ```bash
 wrangler dev
@@ -91,7 +143,7 @@ wrangler dev
 
 服务将在 `http://localhost:8787` 启动。
 
-### 8. 部署
+#### 8. 部署
 
 ```bash
 wrangler deploy

@@ -11,6 +11,9 @@ CREATE TABLE IF NOT EXISTS users (
   vip_expires_at DATETIME
 );
 
+-- Default user
+INSERT OR IGNORE INTO users (username, password_hash, is_vip) VALUES ('admin', '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', 1) 
+
 -- User sessions table (for token-based auth)
 CREATE TABLE IF NOT EXISTS sessions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

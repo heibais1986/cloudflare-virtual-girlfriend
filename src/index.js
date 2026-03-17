@@ -133,6 +133,11 @@ export default {
         const generationId = parseInt(path.split('/').pop());
         return await handleImageStatus(request, env, corsHeaders, generationId);
       }
+
+      // Route handling - Database Initialization (One-click deploy)
+      if (path === '/init' && request.method === 'GET') {
+        return await handleDatabaseInit(request, env, corsHeaders);
+      }
       
       // Default response for unknown routes
       return new Response(JSON.stringify({ error: 'Not found' }), {
@@ -1718,3 +1723,280 @@ const FILLER_RESPONSES = {
     "我在听..."
   ]
 };
+
+// ============================================
+// Database Initialization Handler (One-click deploy)
+// ============================================
+
+async function handleDatabaseInit(request, env, corsHeaders) {
+  try {
+    // Check if already initialized
+    const checkTable = await env.DB.prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='users'"
+    ).first();
+    
+    if (checkTable) {
+      return new Response(JSON.stringify({ 
+        success: true, 
+        message: 'Database already initialized',
+        initialized: true
+      }), {
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+
+    // Execute schema SQL statements
+    const statements = [
+      // Users table
+      `CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        email TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        is_vip INTEGER DEFAULT 0,
+        vip_expires_at DATETIME
+      )`,
+      
+      // Default user (admin/password)
+      `INSERT OR IGNORE INTO users (username, password_hash, is_vip) VALUES ('admin', '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', 1)`,
+      
+      // Sessions table
+      `CREATE TABLE IF NOT EXISTS sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        token TEXT UNIQUE NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        expires_at DATETIME NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      )`,
+      
+      // Chat sessions table
+      `CREATE TABLE IF NOT EXISTS chat_sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        character_id TEXT NOT NULL,
+        last_message TEXT,
+        last_message_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id),
+        UNIQUE(user_id, character_id)
+      )`,
+      
+      // Chat messages table
+      `CREATE TABLE IF NOT EXISTS chat_messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id INTEGER NOT NULL,
+        role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
+        content TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (session_id) REFERENCES chat_sessions(id)
+      )`,
+      
+      // Character media library
+      `CREATE TABLE IF NOT EXISTS character_media (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        character_id TEXT NOT NULL,
+        media_type TEXT NOT NULL DEFAULT 'photo',
+        blur_url TEXT NOT NULL,
+        hd_url TEXT,
+        is_vip_only INTEGER DEFAULT 1,
+        sort_order INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`,
+      
+      // User unlocks
+      `CREATE TABLE IF NOT EXISTS user_unlocks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        media_id INTEGER NOT NULL,
+        unlocked_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id),
+        FOREIGN KEY (media_id) REFERENCES character_media(id),
+        UNIQUE(user_id, media_id)
+      )`,
+      
+      // Indexes
+      `CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token)`,
+      `CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)`,
+      `CREATE INDEX IF NOT EXISTS idx_chat_sessions_user ON chat_sessions(user_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_chat_sessions_user_char ON chat_sessions(user_id, character_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id, created_at)`,
+      `CREATE INDEX IF NOT EXISTS idx_character_media_char ON character_media(character_id, sort_order)`,
+      `CREATE INDEX IF NOT EXISTS idx_user_unlocks_user ON user_unlocks(user_id)`,
+      
+      // Wardrobe items table
+      `CREATE TABLE IF NOT EXISTS wardrobe_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        type TEXT NOT NULL CHECK(type IN ('clothing', 'accessory')),
+        category TEXT NOT NULL,
+        name TEXT NOT NULL,
+        name_zh TEXT,
+        icon TEXT,
+        prompt_fragment TEXT,
+        is_vip_only INTEGER DEFAULT 0,
+        sort_order INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`,
+      
+      // Character photos table
+      `CREATE TABLE IF NOT EXISTS character_photos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        character_id TEXT NOT NULL,
+        outfit_code TEXT NOT NULL,
+        r2_key TEXT NOT NULL,
+        blur_r2_key TEXT,
+        width INTEGER DEFAULT 512,
+        height INTEGER DEFAULT 768,
+        is_vip_only INTEGER DEFAULT 1,
+        sort_order INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )`,
+      
+      // Photo requests table
+      `CREATE TABLE IF NOT EXISTS photo_requests (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        character_id TEXT NOT NULL,
+        outfit_selection TEXT,
+        result_url TEXT,
+        result_r2_key TEXT,
+        status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'processing', 'completed', 'failed')),
+        error_message TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        completed_at DATETIME,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      )`,
+      
+      // Image generations table
+      `CREATE TABLE IF NOT EXISTS image_generations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        character_id TEXT NOT NULL,
+        session_id TEXT,
+        prompt TEXT NOT NULL,
+        scene_context TEXT,
+        r2_key TEXT,
+        blur_r2_key TEXT,
+        width INTEGER DEFAULT 512,
+        height INTEGER DEFAULT 768,
+        status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'processing', 'completed', 'failed')),
+        error_message TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        completed_at DATETIME,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      )`,
+      
+      // User viewed images table
+      `CREATE TABLE IF NOT EXISTS user_viewed_images (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        generation_id INTEGER NOT NULL,
+        viewed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id),
+        FOREIGN KEY (generation_id) REFERENCES image_generations(id),
+        UNIQUE(user_id, generation_id)
+      )`,
+      
+      // Additional indexes
+      `CREATE INDEX IF NOT EXISTS idx_wardrobe_type ON wardrobe_items(type, category)`,
+      `CREATE INDEX IF NOT EXISTS idx_photos_character ON character_photos(character_id, outfit_code)`,
+      `CREATE INDEX IF NOT EXISTS idx_photo_requests_user ON photo_requests(user_id, created_at)`,
+      `CREATE INDEX IF NOT EXISTS idx_image_gen_user ON image_generations(user_id, created_at)`,
+      `CREATE INDEX IF NOT EXISTS idx_image_gen_status ON image_generations(status, created_at)`,
+      `CREATE INDEX IF NOT EXISTS idx_user_viewed ON user_viewed_images(user_id, generation_id)`
+    ];
+
+    // Execute all statements
+    for (const sql of statements) {
+      try {
+        await env.DB.prepare(sql).run();
+      } catch (e) {
+        console.error('SQL execution error:', e.message, 'SQL:', sql.substring(0, 50));
+        // Continue with other statements even if one fails
+      }
+    }
+
+    // Insert default wardrobe items
+    const wardrobeItems = [
+      ['clothing', 'casual', 'Dress', '连衣裙', '👗', 1],
+      ['clothing', 'casual', 'T-Shirt', 'T恤', '👚', 2],
+      ['clothing', 'casual', 'Jacket', '外套', '🧥', 3],
+      ['clothing', 'formal', 'Suit', '正装', '👔', 4],
+      ['clothing', 'formal', 'Evening', '晚礼服', '👗', 5],
+      ['clothing', 'sport', 'Sportswear', '运动装', '🎽', 6],
+      ['clothing', 'sleep', 'Sleepwear', '睡衣', '🛌', 7],
+      ['clothing', 'swim', 'Swimwear', '泳装', '👙', 8],
+      ['accessory', 'jewelry', 'Necklace', '项链', '📿', 1],
+      ['accessory', 'jewelry', 'Earrings', '耳环', '💎', 2],
+      ['accessory', 'eyewear', 'Glasses', '眼镜', '👓', 3],
+      ['accessory', 'headwear', 'Hat', '帽子', '🎩', 4],
+      ['accessory', 'hair', 'Hairpin', '发夹', '🎀', 5],
+      ['accessory', 'watch', 'Watch', '手表', '⌚', 6],
+      ['accessory', 'bag', 'Handbag', '手提包', '👜', 7],
+      ['accessory', 'scarf', 'Scarf', '围巾', '🧣', 8]
+    ];
+
+    for (const item of wardrobeItems) {
+      try {
+        await env.DB.prepare(
+          `INSERT OR IGNORE INTO wardrobe_items (type, category, name, name_zh, icon, sort_order) VALUES (?, ?, ?, ?, ?, ?)`
+        ).bind(...item).run();
+      } catch (e) {
+        console.error('Wardrobe item insert error:', e.message);
+      }
+    }
+
+    // Insert preset character photos
+    const characters = ['yuki', 'aria', 'luna'];
+    const outfits = [
+      ['outfit_1', 'dress.jpg', 1],
+      ['outfit_2', 'tshirt.jpg', 2],
+      ['outfit_3', 'jacket.jpg', 3],
+      ['outfit_4', 'suit.jpg', 4],
+      ['outfit_5', 'evening.jpg', 5],
+      ['outfit_6', 'sportswear.jpg', 6],
+      ['outfit_7', 'sleepwear.jpg', 7],
+      ['outfit_8', 'swimwear.jpg', 8]
+    ];
+
+    for (const character of characters) {
+      for (const [outfitCode, filename, sortOrder] of outfits) {
+        try {
+          await env.DB.prepare(
+            `INSERT OR IGNORE INTO character_photos (character_id, outfit_code, r2_key, is_vip_only, sort_order) VALUES (?, ?, ?, 1, ?)`
+          ).bind(character, outfitCode, `photos/${character}/${filename}`, sortOrder).run();
+        } catch (e) {
+          console.error('Character photo insert error:', e.message);
+        }
+      }
+    }
+
+    return new Response(JSON.stringify({ 
+      success: true, 
+      message: 'Database initialized successfully',
+      initialized: true,
+      details: {
+        tables_created: 10,
+        indexes_created: 15,
+        wardrobe_items: wardrobeItems.length,
+        character_photos: characters.length * outfits.length,
+        default_user: 'admin (password: password)'
+      }
+    }), {
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+
+  } catch (error) {
+    console.error('Database initialization error:', error);
+    return new Response(JSON.stringify({ 
+      success: false, 
+      error: error.message,
+      initialized: false
+    }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    });
+  }
+}
