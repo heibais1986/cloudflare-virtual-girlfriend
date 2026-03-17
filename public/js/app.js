@@ -529,16 +529,16 @@ class VirtualGirlfriend {
   }
 
   // Try primary port, fallback to alternate if needed
-  async fetchWithFallback(url, options) {
-    try {
-      const response = await fetch(url, options);
-      return response;
-    } catch (e) {
-      // Try fallback URL - use Cloudflare Worker as fallback
-      const fallbackUrl = url.replace('gf.xxzd.de5.net', 'gf.docman.edu.kg');
-      return fetch(fallbackUrl, options);
-    }
-  }
+  // async fetchWithFallback(url, options) {
+  //   try {
+  //     const response = await fetch(url, options);
+  //     return response;
+  //   } catch (e) {
+  //     // Try fallback URL - use Cloudflare Worker as fallback
+  //     const fallbackUrl = url.replace('gf.xxzd.de5.net', 'gf.docman.edu.kg');
+  //     return fetch(fallbackUrl, options);
+  //   }
+  // }
   
   async handleVoiceUpload() {
     const file = this.voiceUpload.files[0];
