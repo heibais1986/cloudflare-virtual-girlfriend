@@ -2,7 +2,7 @@
 
 基于 Cloudflare Worker 的虚拟女友聊天服务后端，提供 AI 对话、语音合成、图片生成等功能。
 因为 Cloudflare 每天提供的免费AI配额，所以普通用户也可以部署，生成自己的专属虚拟女友。 再次感谢赛博活佛！
-因为 Cloudflare 的tts模型对于中文支持很差，所以默认界面是英文，聊天也尽量使用英文。 富哥或不习惯英文的用户请自行注册ElevenLabs或使用CosyVoice2来支持中文（由于成本原因未开发，请见谅，独立开发者太难了）。
+因为 Cloudflare 的tts模型对于中文支持很差，所以默认界面是英文，聊天也尽量使用英文。 富哥或不习惯英文的用户请自行注册ElevenLabs或使用CosyVoice2来支持中文（音色克隆由于成本原因未开发，接入ElevenLabs或CosyVoice2可支持）。
 最后，所有的VIP功能，都是使用的 Cloudflare 每天提供的免费AI配额，所以效果一般，富哥或要求较高的用户可以自行接入其他更加智能的模型。
 
 ## 功能特性
@@ -46,7 +46,7 @@ npm install -g wrangler
 ### 2. 克隆本项目
 
 ```bash
-git clone 
+git clone https://github.com/heibais1986/cloudflare-virtual-girlfriend.git
 cd cloudflare-worker
 ```
 
