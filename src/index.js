@@ -373,7 +373,7 @@ function generateToken() {
 
 // Register new user
 async function handleRegister(request, env, corsHeaders) {
-  const { username, password } = await request.json();
+  const { username, email, password } = await request.json();
   
   if (!username || !password) {
     return new Response(JSON.stringify({ error: 'Username and password required' }), {
@@ -397,17 +397,17 @@ async function handleRegister(request, env, corsHeaders) {
       });
     }
     
-    // Create user
+    // Create user with email
     const result = await env.DB.prepare(
-      'INSERT INTO users (username, password_hash) VALUES (?, ?)'
-    ).bind(username, passwordHash).run();
+      'INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)'
+    ).bind(username, email || null, passwordHash).run();
     
     // D1 uses meta.last_row_id
     const userId = result.meta?.last_row_id || result.lastInsertRowid;
     
     return new Response(JSON.stringify({ 
       status: 'ok', 
-      user: { id: userId, username }
+      user: { id: userId, username, email: email || null }
     }), {
       headers: { 'Content-Type': 'application/json', ...corsHeaders }
     });
