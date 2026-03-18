@@ -405,6 +405,21 @@ class ChatController {
   }
   
   renderMessages() {
+    // Preserve messageInput if it's inside chatMessages (it shouldn't be, but handle just in case)
+    const messageInput = this.elements.messageInput;
+    let messageInputParent = null;
+    let messageInputNextSibling = null;
+    
+    // Check if messageInput is inside chatMessages
+    if (this.elements.chatMessages.contains(messageInput)) {
+      // Store its position
+      messageInputParent = messageInput.parentNode;
+      messageInputNextSibling = messageInput.nextSibling;
+      
+      // Remove it from chatMessages temporarily
+      messageInputParent.removeChild(messageInput);
+    }
+    
     const html = this.messages.map((msg, index) => {
       const isUser = msg.role === 'user';
       const time = msg.created_at ? new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
@@ -590,10 +605,17 @@ class ChatController {
       setTimeout(() => {
         this.scrollToBottom();
       }, 100);
-    } else {
-      this.scrollToBottom();
-    }
-  }
+     } else {
+       this.scrollToBottom();
+     }
+     
+     // Restore messageInput if it was temporarily removed
+     if (messageInputParent && messageInputNextSibling) {
+       messageInputParent.insertBefore(messageInput, messageInputNextSibling);
+     } else if (messageInputParent) {
+       messageInputParent.appendChild(messageInput);
+     }
+   }
   
   // Show VIP modal for image unlock
   showVipModalForImage(blurImageUrl) {
