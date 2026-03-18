@@ -554,7 +554,45 @@ class ChatController {
     }).join('');
     
     this.elements.chatMessages.innerHTML = html;
-    this.scrollToBottom();
+    
+    // Check if there are any images that need to be loaded
+    const images = this.elements.chatMessages.querySelectorAll('img[loading="lazy"]');
+    if (images.length > 0) {
+      let loadedCount = 0;
+      const totalImages = images.length;
+      
+      images.forEach(img => {
+        // Remove lazy loading for chat images to ensure they load immediately
+        img.removeAttribute('loading');
+        
+        if (img.complete) {
+          loadedCount++;
+          if (loadedCount === totalImages) {
+            this.scrollToBottom();
+          }
+        } else {
+          img.addEventListener('load', () => {
+            loadedCount++;
+            if (loadedCount === totalImages) {
+              this.scrollToBottom();
+            }
+          });
+          img.addEventListener('error', () => {
+            loadedCount++;
+            if (loadedCount === totalImages) {
+              this.scrollToBottom();
+            }
+          });
+        }
+      });
+      
+      // Fallback: scroll after a short delay even if images haven't loaded
+      setTimeout(() => {
+        this.scrollToBottom();
+      }, 100);
+    } else {
+      this.scrollToBottom();
+    }
   }
   
   // Show VIP modal for image unlock
@@ -659,9 +697,6 @@ class ChatController {
               created_at: new Date().toISOString()
             };
             this.renderMessages();
-            
-            // Scroll to bottom to show the new image
-            this.scrollToBottom();
             
             // Play notification sound for VIP users
             if (data.is_vip) {
