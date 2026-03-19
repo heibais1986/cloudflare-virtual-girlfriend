@@ -5,6 +5,12 @@
 因为 Cloudflare 的tts模型对于中文支持很差，所以默认界面是英文，聊天也尽量使用英文。 富哥或不习惯英文的用户请自行注册ElevenLabs或使用CosyVoice2来支持中文（音色克隆由于成本原因未开发，接入ElevenLabs或CosyVoice2可支持）。
 最后，所有的VIP功能，都是使用的 Cloudflare 每天提供的免费AI配额，所以效果一般，富哥或要求较高的用户可以自行接入其他更加智能的模型。
 
+## 演示视频
+
+[![Virtual Girlfriend Demo](https://img.youtube.com/vi/IE2xFDzkifQ/maxresdefault.jpg)](https://youtu.be/IE2xFDzkifQ?si=-bdvOaeeGwtp8fXG)
+
+点击上方图片观看演示视频，了解如何使用本应用。
+
 ## 一键部署
 
 [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/heibais1986/cloudflare-virtual-girlfriend)
