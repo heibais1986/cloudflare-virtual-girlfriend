@@ -1942,10 +1942,12 @@ class VoiceCallController {
     this.mediaRecorder.ondataavailable = (e) => {
       if (e.data.size > 0) {
         this.audioChunks.push(e.data);
+        console.log('Audio chunk recorded, total chunks:', this.audioChunks.length);
       }
     };
     
     this.mediaRecorder.start(100); // 100ms chunks
+    console.log('MediaRecorder started, mimeType:', mimeType);
   }
   
   startSilenceDetection() {
@@ -1992,10 +1994,10 @@ class VoiceCallController {
         const silenceDuration = now - this.lastSoundTime;
         
         // Process with AI after 2 seconds of silence (realtime approach)
-        if (silenceDuration > 2000 && this.isSpeaking && !this.silenceTimeout) {
-          console.log('Silence detected, processing with AI, silence:', silenceDuration);
+        if (silenceDuration > 2000 && !this.silenceTimeout) {
+          console.log('Silence detected, processing with AI, silence:', silenceDuration, 'audioChunks:', this.audioChunks.length);
           this.silenceTimeout = setTimeout(() => {
-            if (this.isInCall && this.isSpeaking) {
+            if (this.isInCall) {
               this.processWithAI();
             }
           }, 500); // Small delay to ensure user finished speaking
@@ -2010,7 +2012,10 @@ class VoiceCallController {
   
   // Process audio with cloud AI
   async processWithAI() {
+    console.log('processWithAI called, audioChunks:', this.audioChunks.length, 'isMuted:', this.isMuted);
+    
     if (this.isMuted || this.audioChunks.length === 0) {
+      console.log('Skipping AI processing: muted or no audio chunks');
       this.isSpeaking = false;
       return;
     }
@@ -2022,6 +2027,8 @@ class VoiceCallController {
       // Convert to WAV
       const webmBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
       const wavBlob = await this.convertToWav(webmBlob);
+      
+      // Clear audio chunks after converting
       this.audioChunks = [];
       
       // Send to API
