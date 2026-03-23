@@ -1334,6 +1334,8 @@ class VoiceInputController {
     this.chatController = chatController;
     this.isRecording = false;
     this.isProcessing = false;
+    this.isStartingRecording = false; // Flag to prevent race condition
+    this.shouldCancelRecording = false; // Flag to cancel recording start if stop is called early
     this.mediaRecorder = null;
     this.audioChunks = [];
     this.audioContext = null;
@@ -1423,7 +1425,13 @@ class VoiceInputController {
   }
   
   async startRecording() {
-    console.log('startRecording called, isRecording:', this.isRecording);
+    console.log('startRecording called, isRecording:', this.isRecording, 'isStartingRecording:', this.isStartingRecording);
+
+    // Prevent multiple concurrent starts (race condition fix)
+    if (this.isStartingRecording || this.isRecording) {
+      console.log('startRecording: already starting or recording, skipping');
+      return;
+    }
 
     // Check VIP status first
     if (!this.chatController.isVip()) {
@@ -1431,18 +1439,28 @@ class VoiceInputController {
       return;
     }
     
+    this.isStartingRecording = true;
+    this.shouldCancelRecording = false; // Reset cancellation flag
+    
     // Request microphone permission
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
+      const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           channelCount: 1,
           sampleRate: 16000
-        } 
+        }
       });
       
+      // Check if stopRecording was called while we were waiting for permission
+      if (this.shouldCancelRecording) {
+        console.log('startRecording: cancelled by stopRecording, cleaning up stream');
+        stream.getTracks().forEach(track => track.stop());
+        return;
+      }
+      
       // Initialize MediaRecorder
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') 
-        ? 'audio/webm;codecs=opus' 
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
         : 'audio/webm';
       
       this.mediaRecorder = new MediaRecorder(stream, { mimeType });
@@ -1478,11 +1496,26 @@ class VoiceInputController {
     } catch (error) {
       console.error('Microphone access error:', error);
       this.showPermissionError();
+      // Reset recording UI on error
+      this.elements.voiceBtn.classList.remove('recording');
+      this.elements.recordingOverlay.style.display = 'none';
+    } finally {
+      this.isStartingRecording = false;
     }
   }
   
   stopRecording() {
-    console.log('stopRecording called, isRecording:', this.isRecording, 'mediaRecorder:', !!this.mediaRecorder);
+    console.log('stopRecording called, isRecording:', this.isRecording, 'isStartingRecording:', this.isStartingRecording, 'mediaRecorder:', !!this.mediaRecorder);
+
+    // If startRecording is still in progress, mark it to be cancelled
+    if (this.isStartingRecording) {
+      console.log('stopRecording: startRecording still in progress, marking for cancellation');
+      this.shouldCancelRecording = true;
+      // Reset UI immediately since we're cancelling
+      this.elements.voiceBtn.classList.remove('recording');
+      this.elements.recordingOverlay.style.display = 'none';
+      return;
+    }
 
     if (!this.isRecording || !this.mediaRecorder) {
       console.log('stopRecording: early return');
