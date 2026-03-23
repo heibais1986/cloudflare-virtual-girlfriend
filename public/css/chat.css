@@ -222,6 +222,7 @@ body {
   flex-direction: column;
   background: var(--color-bg-primary);
   position: relative;
+  min-height: 0; /* Important: allows flex children to shrink properly in grid */
 }
 
 /* Chat Header */
@@ -272,6 +273,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-sm);
+  min-height: 0; /* Important: allows this flex item to shrink below its content size */
 }
 
 /* Message Bubbles */
