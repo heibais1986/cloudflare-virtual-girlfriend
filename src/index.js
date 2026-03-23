@@ -751,65 +751,65 @@ async function handleChat(request, env, corsHeaders, ctx) {
   }
   
   try {
-    // Check for image generation intent
-    if (detectImageIntent(message)) {
-      const userId = await getUserIdFromToken(request, env);
-      
-      if (!userId) {
-        return new Response(JSON.stringify({ 
-          reply: '请先登录后再让我发照片哦~ 💕',
-          type: 'text'
-        }), {
-          headers: { 'Content-Type': 'application/json', ...corsHeaders }
-        });
-      }
-      
-      // Detect scene context
-      const scene = detectScene(message, history);
-      
-      // Build prompt
-      const prompt = buildImagePrompt(character, scene);
-      
-      // Create generation task
-      const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      
-      const result = await env.DB.prepare(`
-        INSERT INTO image_generations (user_id, character_id, session_id, prompt, scene_context, status)
-        VALUES (?, ?, ?, ?, ?, 'processing')
-      `).bind(userId, character, sessionId, prompt, scene).run();
-      
-      const generationId = result.meta.last_row_id;
-      
-      console.log(`Created image generation task: id=${generationId}, character=${character}`);
-      
-      // Trigger async generation (non-blocking)
-      if (ctx && ctx.waitUntil) {
-        ctx.waitUntil(generateImageAsync(env, generationId, prompt));
-      } else {
-        // Fallback: fire and forget
-        generateImageAsync(env, generationId, prompt).catch(console.error);
-      }
-      
-      // Return placeholder response (bilingual)
-      const characterNames = { 
-        yuki: { en: 'Yuki', zh: 'Yuki' },
-        aria: { en: 'Aria', zh: 'Aria' },
-        luna: { en: 'Luna', zh: 'Luna' }
-      };
-      const charName = characterNames[character] || characterNames.yuki;
-      
-      return new Response(JSON.stringify({
-        type: 'image_placeholder',
-        generation_id: generationId,
-        character_id: character,
-        message_zh: `${charName.zh} 正在准备相机...`,
-        message_en: `${charName.en} is preparing the camera...`,
-        reply_zh: `${charName.zh} 正在准备相机... 📸`,
-        reply_en: `${charName.en} is preparing the camera... 📸`
-      }), {
-        headers: { 'Content-Type': 'application/json', ...corsHeaders }
-      });
-    }
+    // [COMMENTED OUT] Check for image generation intent
+    // if (detectImageIntent(message)) {
+    //   const userId = await getUserIdFromToken(request, env);
+    //
+    //   if (!userId) {
+    //     return new Response(JSON.stringify({
+    //       reply: '请先登录后再让我发照片哦~ 💕',
+    //       type: 'text'
+    //     }), {
+    //       headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    //     });
+    //   }
+    //
+    //   // Detect scene context
+    //   const scene = detectScene(message, history);
+    //
+    //   // Build prompt
+    //   const prompt = buildImagePrompt(character, scene);
+    //
+    //   // Create generation task
+    //   const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    //
+    //   const result = await env.DB.prepare(`
+    //     INSERT INTO image_generations (user_id, character_id, session_id, prompt, scene_context, status)
+    //     VALUES (?, ?, ?, ?, ?, 'processing')
+    //   `).bind(userId, character, sessionId, prompt, scene).run();
+    //
+    //   const generationId = result.meta.last_row_id;
+    //
+    //   console.log(`Created image generation task: id=${generationId}, character=${character}`);
+    //
+    //   // Trigger async generation (non-blocking)
+    //   if (ctx && ctx.waitUntil) {
+    //     ctx.waitUntil(generateImageAsync(env, generationId, prompt));
+    //   } else {
+    //     // Fallback: fire and forget
+    //     generateImageAsync(env, generationId, prompt).catch(console.error);
+    //   }
+    //
+    //   // Return placeholder response (bilingual)
+    //   const characterNames = {
+    //     yuki: { en: 'Yuki', zh: 'Yuki' },
+    //     aria: { en: 'Aria', zh: 'Aria' },
+    //     luna: { en: 'Luna', zh: 'Luna' }
+    //   };
+    //   const charName = characterNames[character] || characterNames.yuki;
+    //
+    //   return new Response(JSON.stringify({
+    //     type: 'image_placeholder',
+    //     generation_id: generationId,
+    //     character_id: character,
+    //     message_zh: `${charName.zh} 正在准备相机...`,
+    //     message_en: `${charName.en} is preparing the camera...`,
+    //     reply_zh: `${charName.zh} 正在准备相机... 📸`,
+    //     reply_en: `${charName.en} is preparing the camera... 📸`
+    //   }), {
+    //     headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    //   });
+    // }
     
     let systemPrompt = '';
     if (character === 'aria') {
