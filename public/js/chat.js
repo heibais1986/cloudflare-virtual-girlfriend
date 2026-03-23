@@ -1727,10 +1727,9 @@ class VoiceCallController {
     this.currentAudio = null;
     
     // Silence detection
-    this.silenceThreshold = 0.01;
-    this.silenceStart = null;
+    this.speakingThreshold = 0.05;  // level to consider user is speaking
+    this.silenceThreshold = 0.02;   // level to consider silence
     this.lastSoundTime = 0;
-    this.silenceCheckInterval = null;
     this.isSpeaking = false;
     
     // Silence detection for realtime processing
@@ -1976,8 +1975,8 @@ class VoiceCallController {
       
       const now = Date.now();
       
-      // Detect speaking vs silence
-      if (normalizedLevel > this.silenceThreshold) {
+      // Two-threshold approach: higher to start speaking, lower to stop
+      if (normalizedLevel > this.speakingThreshold) {
         // User is speaking
         this.lastSoundTime = now;
         this.isSpeaking = true;
@@ -1989,18 +1988,18 @@ class VoiceCallController {
         }
         
         this.updateStatus('listening');
-      } else {
-        // Silence detected - check duration
+      } else if (normalizedLevel < this.silenceThreshold && this.isSpeaking) {
+        // Silence detected after speaking
         const silenceDuration = now - this.lastSoundTime;
         
-        // Process with AI after 2 seconds of silence (realtime approach)
-        if (silenceDuration > 2000 && !this.silenceTimeout) {
+        // Process with AI after 1.5 seconds of silence
+        if (silenceDuration > 1500 && !this.silenceTimeout) {
           console.log('Silence detected, processing with AI, silence:', silenceDuration, 'audioChunks:', this.audioChunks.length);
           this.silenceTimeout = setTimeout(() => {
             if (this.isInCall) {
               this.processWithAI();
             }
-          }, 500); // Small delay to ensure user finished speaking
+          }, 300);
         }
       }
       
@@ -2012,6 +2011,9 @@ class VoiceCallController {
   
   // Process audio with cloud AI
   async processWithAI() {
+    // Reset silence timeout so next utterance can trigger again
+    this.silenceTimeout = null;
+    
     console.log('processWithAI called, audioChunks:', this.audioChunks.length, 'isMuted:', this.isMuted);
     
     if (this.isMuted || this.audioChunks.length === 0) {
