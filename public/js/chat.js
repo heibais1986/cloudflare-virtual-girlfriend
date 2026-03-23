@@ -1702,8 +1702,8 @@ class VoiceInputController {
 }
 
 // ============================================
-// Voice Call Controller (Click-to-Call)
-// Local filler audio + Cloud AI hybrid approach
+// Voice Call Controller (Realtime)
+// Realtime audio processing with cloud AI
 // ============================================
 class VoiceCallController {
   constructor(chatController) {
@@ -1733,22 +1733,8 @@ class VoiceCallController {
     this.silenceCheckInterval = null;
     this.isSpeaking = false;
     
-    // Filler system - local audio clips
-    this.fillerStage = 0; // 0: none, 1: short filler, 2: long filler
-    this.fillerTimeout = null;
-    this.fillerAudioCache = {}; // Cache for pre-generated filler audio
-    
-    // Short fillers (1.5s pause) - thinking sounds
-    this.shortFillers = {
-      en: ['Hmm...', 'Let me think...', 'Interesting...', 'Good question...'],
-      zh: ['嗯...', '让我想想...', '有意思...', '好问题...']
-    };
-    
-    // Long fillers (4s+ pause) - encouragement
-    this.longFillers = {
-      en: ['I understand, take your time.', 'You can do it!', 'I believe in you.', 'Go on, I\'m listening.'],
-      zh: ['我明白的，慢慢说。', '你可以的！', '我相信你。', '继续说，我在听。']
-    };
+    // Silence detection for realtime processing
+    this.silenceTimeout = null;
     
     // History
     this.conversationHistory = [];
@@ -1759,61 +1745,6 @@ class VoiceCallController {
   init() {
     this.createCallOverlay();
     this.bindEvents();
-    this.preloadFillerAudio();
-  }
-  
-  // Pre-generate filler audio using TTS
-  async preloadFillerAudio() {
-    const token = localStorage.getItem('token');
-    if (!token) return;
-    
-    const allFillers = [
-      ...this.shortFillers.en,
-      ...this.shortFillers.zh,
-      ...this.longFillers.en,
-      ...this.longFillers.zh
-    ];
-    
-    // Pre-generate in background (don't await)
-    for (const text of allFillers.slice(0, 8)) { // Limit to 8 for performance
-      this.generateFillerAudio(text).catch(() => {});
-    }
-  }
-  
-  async generateFillerAudio(text) {
-    if (this.fillerAudioCache[text]) return this.fillerAudioCache[text];
-    
-    const token = localStorage.getItem('token');
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/tts`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': token ? `Bearer ${token}` : ''
-        },
-        body: JSON.stringify({
-          text: text,
-          character_id: this.chatController.currentCharacter || 'yuki'
-        })
-      });
-      
-      if (response.ok) {
-        // Get binary audio data and convert to base64
-        const arrayBuffer = await response.arrayBuffer();
-        const uint8Array = new Uint8Array(arrayBuffer);
-        let binary = '';
-        for (let i = 0; i < uint8Array.byteLength; i++) {
-          binary += String.fromCharCode(uint8Array[i]);
-        }
-        const base64Audio = btoa(binary);
-        
-        this.fillerAudioCache[text] = base64Audio;
-        return base64Audio;
-      }
-    } catch (e) {
-      console.warn('Failed to generate filler audio:', e);
-    }
-    return null;
   }
   
   createCallOverlay() {
@@ -2048,12 +1979,11 @@ class VoiceCallController {
         // User is speaking
         this.lastSoundTime = now;
         this.isSpeaking = true;
-        this.fillerStage = 0;
         
-        // Clear filler timeout
-        if (this.fillerTimeout) {
-          clearTimeout(this.fillerTimeout);
-          this.fillerTimeout = null;
+        // Clear silence timeout
+        if (this.silenceTimeout) {
+          clearTimeout(this.silenceTimeout);
+          this.silenceTimeout = null;
         }
         
         this.updateStatus('listening');
@@ -2061,25 +1991,14 @@ class VoiceCallController {
         // Silence detected - check duration
         const silenceDuration = now - this.lastSoundTime;
         
-        // Stage 1: 1.5 seconds - play short filler (thinking)
-        if (silenceDuration > 1500 && silenceDuration < 4000 && this.fillerStage === 0) {
-          console.log('Stage 1: Short filler, silence:', silenceDuration);
-          this.fillerStage = 1;
-          this.playFiller('short');
-        }
-        
-        // Stage 2: 4 seconds - play long filler and prepare for AI
-        else if (silenceDuration > 4000 && this.fillerStage === 1) {
-          console.log('Stage 2: Long filler + AI, silence:', silenceDuration);
-          this.fillerStage = 2;
-          this.playFiller('long');
-          
-          // After filler, process with AI
-          this.fillerTimeout = setTimeout(() => {
-            if (this.isInCall && this.fillerStage === 2) {
+        // Process with AI after 2 seconds of silence (realtime approach)
+        if (silenceDuration > 2000 && this.isSpeaking && !this.silenceTimeout) {
+          console.log('Silence detected, processing with AI, silence:', silenceDuration);
+          this.silenceTimeout = setTimeout(() => {
+            if (this.isInCall && this.isSpeaking) {
               this.processWithAI();
             }
-          }, 2500);
+          }, 500); // Small delay to ensure user finished speaking
         }
       }
       
@@ -2089,48 +2008,15 @@ class VoiceCallController {
     checkAudio();
   }
   
-  // Play filler audio (local or cached)
-  async playFiller(type) {
-    if (this.isPlaying || this.isMuted) {
-      console.log('Skip filler: already playing or muted');
-      return;
-    }
-    
-    const lang = this.chatController.lang || 'en';
-    const fillers = type === 'short' ? this.shortFillers[lang] : this.longFillers[lang];
-    const text = fillers[Math.floor(Math.random() * fillers.length)];
-    
-    console.log('Playing filler:', type, text);
-    this.updateStatus('thinking');
-    
-    // Check cache first
-    let audioBase64 = this.fillerAudioCache[text];
-    
-    if (!audioBase64) {
-      // Generate on demand (first time)
-      console.log('Generating filler audio...');
-      audioBase64 = await this.generateFillerAudio(text);
-    }
-    
-    if (audioBase64) {
-      console.log('Playing filler audio');
-      await this.playAudioBase64(audioBase64);
-    } else {
-      console.warn('No filler audio available');
-    }
-  }
-  
   // Process audio with cloud AI
   async processWithAI() {
     if (this.isMuted || this.audioChunks.length === 0) {
       this.isSpeaking = false;
-      this.fillerStage = 0;
       return;
     }
     
     this.updateStatus('processing');
     this.isSpeaking = false;
-    this.fillerStage = 0;
     
     try {
       // Convert to WAV
@@ -2374,10 +2260,10 @@ class VoiceCallController {
     // Stop timer
     this.stopTimer();
     
-    // Clear filler timeout
-    if (this.fillerTimeout) {
-      clearTimeout(this.fillerTimeout);
-      this.fillerTimeout = null;
+    // Clear silence timeout
+    if (this.silenceTimeout) {
+      clearTimeout(this.silenceTimeout);
+      this.silenceTimeout = null;
     }
     
     // Stop media recorder

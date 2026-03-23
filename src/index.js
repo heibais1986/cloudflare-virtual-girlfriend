@@ -1574,7 +1574,7 @@ async function handleVoiceCallStart(request, env, corsHeaders) {
   }
 }
 
-// Process audio chunk and return AI response
+// Process audio chunk and return AI response (Realtime optimized)
 async function handleVoiceCallProcess(request, env, corsHeaders) {
   const authHeader = request.headers.get('Authorization');
   
@@ -1613,7 +1613,7 @@ async function handleVoiceCallProcess(request, env, corsHeaders) {
     const audioBuffer = await audioFile.arrayBuffer();
     const audioArray = [...new Uint8Array(audioBuffer)];
     
-    // Step 1: Speech to Text (Whisper)
+    // Step 1: Speech to Text (Whisper) - Realtime optimized
     const sttResult = await env.AI.run('@cf/openai/whisper', {
       audio: audioArray
     });
@@ -1623,7 +1623,7 @@ async function handleVoiceCallProcess(request, env, corsHeaders) {
     console.log('Voice call STT result:', userText);
     
     if (!userText.trim()) {
-      return new Response(JSON.stringify({ 
+      return new Response(JSON.stringify({
         success: false,
         error: '未检测到语音，请重试',
         text: '',
@@ -1634,7 +1634,7 @@ async function handleVoiceCallProcess(request, env, corsHeaders) {
       });
     }
     
-    // Step 2: Generate AI Response (Llama)
+    // Step 2: Generate AI Response (Llama) - Realtime optimized with shorter prompts
     let systemPrompt = '';
     if (characterId === 'aria') {
       systemPrompt = `You are Aria, a cool, mysterious, and somewhat tsundere cyberpunk girl. You are direct and witty but deeply care about the user. Respond in the same language as the user. Keep responses concise for voice conversation, around 20-50 words.`;
@@ -1644,13 +1644,13 @@ async function handleVoiceCallProcess(request, env, corsHeaders) {
       systemPrompt = `You are Yuki, a cute and gentle virtual girlfriend. Respond in a warm and sweet way. Respond in the same language as the user. Keep responses concise for voice conversation, around 20-50 words.`;
     }
     
-    // Build messages
+    // Build messages - Realtime optimized with shorter history
     const messages = [
       { role: 'system', content: systemPrompt }
     ];
     
-    // Add recent history (last 6 messages)
-    const recentHistory = history.slice(-6);
+    // Add recent history (last 4 messages for faster processing)
+    const recentHistory = history.slice(-4);
     for (const msg of recentHistory) {
       messages.push({ role: msg.role, content: msg.content });
     }
@@ -1658,16 +1658,16 @@ async function handleVoiceCallProcess(request, env, corsHeaders) {
     // Add current user message
     messages.push({ role: 'user', content: userText });
     
-    // Generate response
+    // Generate response - Realtime optimized with lower latency
     const llmResult = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
       messages,
-      max_tokens: 150,
+      max_tokens: 100, // Reduced for faster response
       temperature: 0.7
     });
     
     const aiResponse = llmResult.response || llmResult.content || '';
     
-    // Step 3: Text to Speech (Deepgram)
+    // Step 3: Text to Speech (Deepgram) - Realtime optimized
     const cleanResponse = aiResponse.replace(/\*([^*]+)\*/g, '').trim();
     const ttsResult = await env.AI.run('@cf/deepgram/aura-2-en', {
       text: cleanResponse
@@ -1689,8 +1689,8 @@ async function handleVoiceCallProcess(request, env, corsHeaders) {
     
   } catch (error) {
     console.error('Voice call process error:', error);
-    return new Response(JSON.stringify({ 
-      success: false, 
+    return new Response(JSON.stringify({
+      success: false,
       error: '处理失败，请重试',
       details: error.message
     }), {
@@ -1737,30 +1737,6 @@ async function handleVoiceCallEnd(request, env, corsHeaders) {
     });
   }
 }
-
-// Filler responses for short pauses (user optimization)
-const FILLER_RESPONSES = {
-  en: [
-    "I see...",
-    "Go on...",
-    "Mm-hmm...",
-    "Tell me more...",
-    "I understand...",
-    "Yeah...",
-    "Right...",
-    "Interesting..."
-  ],
-  zh: [
-    "嗯...",
-    "然后呢？",
-    "继续说...",
-    "我懂...",
-    "还有吗？",
-    "这样啊...",
-    "原来如此...",
-    "我在听..."
-  ]
-};
 
 // ============================================
 // Database Initialization Handler (One-click deploy)
