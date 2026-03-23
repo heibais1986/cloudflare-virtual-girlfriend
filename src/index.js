@@ -699,13 +699,31 @@ async function handleTTSSpeak(request, env, corsHeaders) {
   }
 
   try {
-    // Always use aura-2-en as it sounds more natural
-    const audioBuffer = await env.AI.run(
-      '@cf/deepgram/aura-2-en',
-      {
-        text: text
-      }
-    );
+    // Use melotts for multilingual support (including Chinese)
+    // Fallback to aura-2-en for English if melotts fails
+    let audioBuffer;
+    let modelUsed = '@cf/myshell-ai/melotts';
+    
+    try {
+      // Try melotts first (supports Chinese, English, Japanese, Korean, etc.)
+      audioBuffer = await env.AI.run(
+        '@cf/myshell-ai/melotts',
+        {
+          text: text,
+          lang: language // Support language parameter: 'zh', 'en', 'ja', 'ko', etc.
+        }
+      );
+    } catch (melottsError) {
+      console.log('melotts failed, falling back to aura-2-en:', melottsError.message);
+      // Fallback to aura-2-en for English
+      modelUsed = '@cf/deepgram/aura-2-en';
+      audioBuffer = await env.AI.run(
+        '@cf/deepgram/aura-2-en',
+        {
+          text: text
+        }
+      );
+    }
 
     // Return binary audio data
     return new Response(audioBuffer, {
@@ -726,13 +744,15 @@ async function handleTTSSpeak(request, env, corsHeaders) {
 
 // TTS Status endpoint
 async function handleTTSStatus(request, env, corsHeaders) {
-  return new Response(JSON.stringify({ 
+  return new Response(JSON.stringify({
     status: 'ok',
     features: {
-      languages: ['en', 'fr', 'es', 'zh'],
-      model: '@cf/myshell-ai/melotts',
+      languages: ['zh', 'en', 'ja', 'ko', 'fr', 'es'],
+      primary_model: '@cf/myshell-ai/melotts',
+      fallback_model: '@cf/deepgram/aura-2-en',
       lang_param: true,
-      emotion_support: false
+      emotion_support: false,
+      chinese_support: true
     }
   }), {
     headers: { 'Content-Type': 'application/json', ...corsHeaders }
@@ -905,13 +925,31 @@ async function handleChatVoice(request, env, corsHeaders) {
     
     const reply = aiResponse.response || aiResponse.content || '';
     
-    // Then generate TTS audio - use aura-2-en (sounds more natural)
-    const ttsResponse = await env.AI.run(
-      '@cf/deepgram/aura-2-en',
-      {
-        text: reply
-      }
-    );
+    // Then generate TTS audio - use melotts for multilingual support (including Chinese)
+    let ttsResponse;
+    try {
+      // Try melotts first (supports Chinese, English, Japanese, Korean, etc.)
+      // Detect language from reply (simple heuristic)
+      const hasChinese = /[\u4e00-\u9fa5]/.test(reply);
+      const lang = hasChinese ? 'zh' : 'en';
+      
+      ttsResponse = await env.AI.run(
+        '@cf/myshell-ai/melotts',
+        {
+          text: reply,
+          lang: lang
+        }
+      );
+    } catch (melottsError) {
+      console.log('melotts failed in chat voice, falling back to aura-2-en:', melottsError.message);
+      // Fallback to aura-2-en for English
+      ttsResponse = await env.AI.run(
+        '@cf/deepgram/aura-2-en',
+        {
+          text: reply
+        }
+      );
+    }
     
     // Convert audio to base64 for JSON response
     const uint8Array = new Uint8Array(ttsResponse);
