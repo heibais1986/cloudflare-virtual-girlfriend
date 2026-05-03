@@ -687,9 +687,9 @@ async function handlePurchaseVip(request, env, corsHeaders) {
 
 // TTS Speak endpoint
 async function handleTTSSpeak(request, env, corsHeaders) {
-  const { text, language = 'en' } = await request.json();
+  const { text, language = 'en', character = 'yuki' } = await request.json();
 
-  console.log('TTS Request:', { text: text?.substring(0, 50), language });
+  console.log('TTS Request:', { text: text?.substring(0, 50), language, character });
 
   if (!text) {
     return new Response(JSON.stringify({ error: 'Text is required' }), {
@@ -699,36 +699,53 @@ async function handleTTSSpeak(request, env, corsHeaders) {
   }
 
   try {
-    // Use melotts for multilingual support (including Chinese)
-    // Fallback to aura-2-en for English if melotts fails
-    let audioBuffer;
-    let modelUsed = '@cf/myshell-ai/melotts';
+    // Character-specific voice mapping for English
+    const voiceMap = {
+      yuki: '@cf/deepgram/aura-luna-en',      // Gentle, warm voice
+      aria: '@cf/deepgram/aura-asteria-en',   // Mysterious, cool voice
+      luna: '@cf/deepgram/aura-stella-en'     // Energetic, cheerful voice
+    };
     
-    try {
-      // Try melotts first (supports Chinese, English, Japanese, Korean, etc.)
-      audioBuffer = await env.AI.run(
-        '@cf/myshell-ai/melotts',
-        {
-          text: text,
-          lang: language // Support language parameter: 'zh', 'en', 'ja', 'ko', etc.
-        }
-      );
-    } catch (melottsError) {
-      console.log('melotts failed, falling back to aura-2-en:', melottsError.message);
-      // Fallback to aura-2-en for English
-      modelUsed = '@cf/deepgram/aura-2-en';
-      audioBuffer = await env.AI.run(
-        '@cf/deepgram/aura-2-en',
-        {
-          text: text
-        }
-      );
+    let audioBuffer;
+    let modelUsed;
+    
+    // Use melotts for Chinese, character-specific voices for English
+    if (language === 'zh' || /[\u4e00-\u9fa5]/.test(text)) {
+      // Chinese text - use melotts
+      try {
+        modelUsed = '@cf/myshell-ai/melotts';
+        audioBuffer = await env.AI.run(
+          '@cf/myshell-ai/melotts',
+          {
+            text: text,
+            lang: 'zh'
+          }
+        );
+      } catch (melottsError) {
+        console.log('melotts failed for Chinese, falling back to aura-2-en:', melottsError.message);
+        modelUsed = '@cf/deepgram/aura-2-en';
+        audioBuffer = await env.AI.run('@cf/deepgram/aura-2-en', { text: text });
+      }
+    } else {
+      // English text - use character-specific voice
+      const voiceModel = voiceMap[character] || '@cf/deepgram/aura-2-en';
+      try {
+        modelUsed = voiceModel;
+        audioBuffer = await env.AI.run(voiceModel, { text: text });
+      } catch (voiceError) {
+        console.log(`${voiceModel} failed, falling back to aura-2-en:`, voiceError.message);
+        modelUsed = '@cf/deepgram/aura-2-en';
+        audioBuffer = await env.AI.run('@cf/deepgram/aura-2-en', { text: text });
+      }
     }
+
+    console.log('TTS Success:', { modelUsed, textLength: text.length });
 
     // Return binary audio data
     return new Response(audioBuffer, {
       headers: {
         'Content-Type': 'audio/wav',
+        'X-TTS-Model': modelUsed,
         ...corsHeaders
       }
     });
@@ -771,6 +788,9 @@ async function handleChat(request, env, corsHeaders, ctx) {
   }
   
   try {
+    // Check if user is VIP for model selection
+    const userId = await getUserIdFromToken(request, env);
+    const isVip = userId ? await checkUserVipStatus(userId, env) : false;
     // [COMMENTED OUT] Check for image generation intent
     // if (detectImageIntent(message)) {
     //   const userId = await getUserIdFromToken(request, env);
@@ -854,21 +874,29 @@ async function handleChat(request, env, corsHeaders, ctx) {
     // Add current message
     messages.push({ role: 'user', content: message });
     
-    // Use Cloudflare AI - Llama 3.1
+    // Select model based on VIP status
+    const modelName = isVip
+      ? '@cf/meta/llama-3.3-70b-instruct-fp8-fast'  // VIP: 70B model
+      : '@cf/meta/llama-3.2-3b-instruct';            // Free: 3B model
+    
+    const maxTokens = isVip ? 256 : 150;  // VIP gets longer responses
+    
+    // Use Cloudflare AI with selected model
     const response = await env.AI.run(
-      '@cf/meta/llama-3.1-8b-instruct',
+      modelName,
       {
         messages,
-        max_tokens: 256,
+        max_tokens: maxTokens,
         temperature: 0.7
       }
     );
     
     const reply = response.response || response.content || '';
     
-    return new Response(JSON.stringify({ 
+    return new Response(JSON.stringify({
       reply,
-      model: 'llama-3.1-8b-instruct'
+      model: modelName.split('/').pop(),
+      is_vip: isVip
     }), {
       headers: { 'Content-Type': 'application/json', ...corsHeaders }
     });
@@ -913,52 +941,75 @@ async function handleChatVoice(request, env, corsHeaders) {
     
     messages.push({ role: 'user', content: message });
     
+    // Check VIP status for model selection
+    const userId = await getUserIdFromToken(request, env);
+    const isVip = userId ? await checkUserVipStatus(userId, env) : false;
+    
+    // Select model based on VIP status
+    const modelName = isVip
+      ? '@cf/meta/llama-3.3-70b-instruct-fp8-fast'
+      : '@cf/meta/llama-3.2-3b-instruct';
+    
+    const maxTokens = isVip ? 256 : 150;
+    
     // Get AI response
     const aiResponse = await env.AI.run(
-      '@cf/meta/llama-3.1-8b-instruct',
+      modelName,
       {
         messages,
-        max_tokens: 256,
+        max_tokens: maxTokens,
         temperature: 0.7
       }
     );
     
     const reply = aiResponse.response || aiResponse.content || '';
     
-    // Then generate TTS audio - use melotts for multilingual support (including Chinese)
+    // Then generate TTS audio with character-specific voice
     let ttsResponse;
     try {
-      // Try melotts first (supports Chinese, English, Japanese, Korean, etc.)
-      // Detect language from reply (simple heuristic)
+      // Detect language from reply
       const hasChinese = /[\u4e00-\u9fa5]/.test(reply);
-      const lang = hasChinese ? 'zh' : 'en';
       
-      ttsResponse = await env.AI.run(
-        '@cf/myshell-ai/melotts',
-        {
-          text: reply,
-          lang: lang
+      if (hasChinese) {
+        // Chinese - use melotts
+        ttsResponse = await env.AI.run(
+          '@cf/myshell-ai/melotts',
+          {
+            text: reply,
+            lang: 'zh'
+          }
+        );
+      } else {
+        // English - use character-specific voice
+        const voiceMap = {
+          yuki: '@cf/deepgram/aura-luna-en',      // Gentle voice
+          aria: '@cf/deepgram/aura-asteria-en',   // Mysterious voice
+          luna: '@cf/deepgram/aura-stella-en'     // Energetic voice
+        };
+        const voiceModel = voiceMap[character] || '@cf/deepgram/aura-2-en';
+        
+        try {
+          ttsResponse = await env.AI.run(voiceModel, { text: reply });
+        } catch (voiceError) {
+          console.log(`${voiceModel} failed, falling back to aura-2-en:`, voiceError.message);
+          ttsResponse = await env.AI.run('@cf/deepgram/aura-2-en', { text: reply });
         }
-      );
-    } catch (melottsError) {
-      console.log('melotts failed in chat voice, falling back to aura-2-en:', melottsError.message);
-      // Fallback to aura-2-en for English
-      ttsResponse = await env.AI.run(
-        '@cf/deepgram/aura-2-en',
-        {
-          text: reply
-        }
-      );
+      }
+    } catch (ttsError) {
+      console.log('TTS failed in chat voice:', ttsError.message);
+      // Final fallback
+      ttsResponse = await env.AI.run('@cf/deepgram/aura-2-en', { text: reply });
     }
     
     // Convert audio to base64 for JSON response
     const uint8Array = new Uint8Array(ttsResponse);
     const audioBase64 = btoa(String.fromCharCode(...uint8Array));
     
-    return new Response(JSON.stringify({ 
+    return new Response(JSON.stringify({
       reply,
       audio: audioBase64,
-      model: 'llama-3.1-8b-instruct'
+      model: modelName.split('/').pop(),
+      is_vip: isVip
     }), {
       headers: { 'Content-Type': 'application/json', ...corsHeaders }
     });
@@ -1471,8 +1522,8 @@ async function handleSpeechToText(request, env, corsHeaders) {
     const audioBuffer = await audioFile.arrayBuffer();
     const audioArray = [...new Uint8Array(audioBuffer)];
     
-    // Call Whisper API
-    const result = await env.AI.run('@cf/openai/whisper', {
+    // Call Whisper API - use large-v3 for better accuracy
+    const result = await env.AI.run('@cf/openai/whisper-large-v3', {
       audio: audioArray
     });
     
@@ -1613,8 +1664,8 @@ async function handleVoiceCallProcess(request, env, corsHeaders) {
     const audioBuffer = await audioFile.arrayBuffer();
     const audioArray = [...new Uint8Array(audioBuffer)];
     
-    // Step 1: Speech to Text (Whisper) - Realtime optimized
-    const sttResult = await env.AI.run('@cf/openai/whisper', {
+    // Step 1: Speech to Text (Whisper Large v3) - Realtime optimized
+    const sttResult = await env.AI.run('@cf/openai/whisper-large-v3', {
       audio: audioArray
     });
     
@@ -1658,20 +1709,53 @@ async function handleVoiceCallProcess(request, env, corsHeaders) {
     // Add current user message
     messages.push({ role: 'user', content: userText });
     
+    // Check VIP status for model selection
+    const session = await env.DB.prepare(`
+      SELECT user_id FROM sessions
+      WHERE token = ? AND expires_at > datetime('now')
+    `).bind(token).first();
+    
+    const isVip = session ? await checkUserVipStatus(session.user_id, env) : false;
+    
+    // Select model - VIP gets better model even in voice calls
+    const modelName = isVip
+      ? '@cf/meta/llama-3.3-70b-instruct-fp8-fast'
+      : '@cf/meta/llama-3.2-3b-instruct';
+    
+    const maxTokens = isVip ? 120 : 80;  // Shorter for voice, but VIP gets more
+    
     // Generate response - Realtime optimized with lower latency
-    const llmResult = await env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
+    const llmResult = await env.AI.run(modelName, {
       messages,
-      max_tokens: 100, // Reduced for faster response
+      max_tokens: maxTokens,
       temperature: 0.7
     });
     
     const aiResponse = llmResult.response || llmResult.content || '';
     
-    // Step 3: Text to Speech (Deepgram) - Realtime optimized
+    // Step 3: Text to Speech - Realtime optimized with character-specific voice
     const cleanResponse = aiResponse.replace(/\*([^*]+)\*/g, '').trim();
-    const ttsResult = await env.AI.run('@cf/deepgram/aura-2-en', {
-      text: cleanResponse
-    });
+    
+    // Detect language and select appropriate voice
+    const hasChinese = /[\u4e00-\u9fa5]/.test(cleanResponse);
+    let ttsResult;
+    
+    if (hasChinese) {
+      // Chinese - use melotts
+      ttsResult = await env.AI.run('@cf/myshell-ai/melotts', {
+        text: cleanResponse,
+        lang: 'zh'
+      });
+    } else {
+      // English - use character-specific voice
+      const voiceMap = {
+        yuki: '@cf/deepgram/aura-luna-en',
+        aria: '@cf/deepgram/aura-asteria-en',
+        luna: '@cf/deepgram/aura-stella-en'
+      };
+      const voiceModel = voiceMap[characterId] || '@cf/deepgram/aura-2-en';
+      ttsResult = await env.AI.run(voiceModel, { text: cleanResponse });
+    }
     
     // Convert audio to base64 for JSON response
     const uint8Array = new Uint8Array(ttsResult);

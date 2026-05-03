@@ -362,7 +362,10 @@ class ChatController {
       const response = await fetch(`${API_BASE_URL}/api/tts/speak`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: cleanText })
+        body: JSON.stringify({
+          text: cleanText,
+          character: this.currentCharacter  // Pass character for voice selection
+        })
       });
       
       if (response.ok) {
