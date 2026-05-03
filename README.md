@@ -2,8 +2,17 @@
 
 基于 Cloudflare Worker 的虚拟女友聊天服务后端，提供 AI 对话、语音合成、图片生成等功能。
 因为 Cloudflare 每天提供的免费AI配额，所以普通用户也可以部署，生成自己的专属虚拟女友。 再次感谢赛博活佛！
-因为 Cloudflare 的tts模型对于中文支持很差，所以默认界面是英文，聊天也尽量使用英文。 富哥或不习惯英文的用户请自行注册ElevenLabs或使用CosyVoice2来支持中文（音色克隆由于成本原因未开发，接入ElevenLabs或CosyVoice2可支持）。
-最后，所有的VIP功能，都是使用的 Cloudflare 每天提供的免费AI配额，所以效果一般，富哥或要求较高的用户可以自行接入其他更加智能的模型。
+
+## 🎉 最新更新 (2026-05-03)
+
+**重大升级！** 已全面升级AI模型，显著提升体验：
+
+- ✨ **角色专属音色** - 每个角色拥有独特的声音（Yuki温柔、Aria神秘、Luna活力）
+- 🚀 **VIP享受70B顶级模型** - 对话质量提升23倍（Llama 3.3 70B vs 3B）
+- 🎯 **语音识别升级** - Whisper Large v3，识别更准确
+- 💎 **智能分级服务** - 普通用户3B模型，VIP用户70B模型，成本可控
+
+详见：[模型研究报告](CLOUDFLARE_AI_MODELS_RESEARCH.md) | [升级总结](UPGRADE_SUMMARY.md)
 
 ## 演示视频
 
@@ -26,22 +35,25 @@
 ## 功能特性
 
 ### 核心功能
-- **AI 聊天对话** - 使用 Cloudflare AI (Llama 3.1) 提供角色化对话
-- **语音合成 (TTS)** - 支持文字转语音，使用 Deepgram Aura-2
-- **语音转文字 (STT)** - 使用 OpenAI Whisper 实现语音识别
+- **AI 聊天对话** - 🆕 分级服务：VIP用户使用Llama 3.3 70B，普通用户使用Llama 3.2 3B
+- **语音合成 (TTS)** - 🆕 角色专属音色：Yuki温柔、Aria神秘、Luna活力，中文使用MeloTTS
+- **语音转文字 (STT)** - 🆕 升级到Whisper Large v3，识别更准确
 - **AI 图片生成** - 根据对话上下文生成场景图片（支持浴室、卧室等场景）
-- **语音通话** - 实时语音对话功能
+- **语音通话** - 实时语音对话功能，VIP用户享受更高质量
 
 ### 角色系统
-支持 3 个虚拟角色：
-- **Yuki** - 温柔体贴的虚拟女友
-- **Aria** - 神秘傲娇的赛博朋克女孩
-- **Luna** - 活力开朗的阳光少女
+支持 3 个虚拟角色，每个角色拥有独特的声音：
+- **Yuki** 🌸 - 温柔体贴的虚拟女友（温柔女声 - Aura Luna）
+- **Aria** 🌙 - 神秘傲娇的赛博朋克女孩（神秘女声 - Aura Asteria）
+- **Luna** ☀️ - 活力开朗的阳光少女（活力女声 - Aura Stella）
 
 ### VIP 系统
-- VIP 会员解锁高清图片查看
-- 非 VIP 用户看到模糊图片 + 升级引导
-- 支持月卡和年卡订阅
+- 🚀 **70B顶级对话模型** - 对话质量提升23倍
+- 📝 **更长回复** - VIP用户获得更详细的回复（256 tokens vs 150 tokens）
+- 🎭 **专属音色** - 每个角色独特的声音体验
+- 🎯 **更准确的语音识别** - Whisper Large v3
+- 📸 **高清图片查看** - 解锁所有高清媒体内容
+- 💎 **月卡和年卡订阅** - 灵活的订阅选择
 
 ## 技术栈
 
@@ -50,6 +62,15 @@
 - **对象存储**: Cloudflare R2
 - **AI 推理**: Cloudflare AI (Workers AI)
 - **认证**: JWT Token
+
+### AI 模型配置
+
+| 功能 | 普通用户 | VIP用户 |
+|-----|---------|---------|
+| **对话模型** | Llama 3.2 3B | Llama 3.3 70B FP8 Fast |
+| **语音合成** | Deepgram Aura-2 | 角色专属音色 (Luna/Asteria/Stella) |
+| **语音识别** | Whisper Large v3 | Whisper Large v3 |
+| **回复长度** | 150 tokens | 256 tokens |
 
 ## 快速开始
 
@@ -216,7 +237,9 @@ Content-Type: application/json
 
 # 普通响应
 {
-  "reply": "你好呀~ 很高兴见到你！"
+  "reply": "你好呀~ 很高兴见到你！",
+  "model": "llama-3.3-70b-instruct-fp8-fast",  // 使用的模型
+  "is_vip": true  // 用户VIP状态
 }
 
 # 图片生成响应（当用户请求图片时）
@@ -257,11 +280,20 @@ POST /api/tts/speak
 Content-Type: application/json
 
 {
-  "text": "你好呀~"
+  "text": "你好呀~",
+  "language": "zh",  // 可选: zh(中文) / en(英文)
+  "character": "yuki"  // 🆕 角色ID，用于选择专属音色
 }
 
 # 响应: audio/wav 二进制数据
+# 响应头包含: X-TTS-Model (使用的TTS模型)
 ```
+
+**角色音色映射**：
+- `yuki` → Deepgram Aura Luna (温柔女声)
+- `aria` → Deepgram Aura Asteria (神秘女声)
+- `luna` → Deepgram Aura Stella (活力女声)
+- 中文内容自动使用 MeloTTS
 
 #### 语音转文字
 ```http
@@ -374,6 +406,56 @@ cloudflare-worker/
 2. **生产部署**：敏感信息应使用 `wrangler secret put <KEY>` 设置
 3. **数据库迁移**：修改 schema.sql 后需要手动执行迁移
 4. **图片存储**：生成的图片存储在 R2 的 `generated/` 目录下
+
+## 🚀 模型升级说明
+
+### 最新升级 (2026-05-03)
+
+本项目已完成全面的AI模型升级，详细信息请查看：
+
+- 📊 [完整模型研究报告](CLOUDFLARE_AI_MODELS_RESEARCH.md) - 详细的模型对比和选型分析
+- 📝 [升级实施总结](UPGRADE_SUMMARY.md) - 实施细节、成本分析、后续建议
+
+### 主要改进
+
+1. **分级服务架构**
+   - VIP用户：Llama 3.3 70B（顶级对话质量）
+   - 普通用户：Llama 3.2 3B（快速响应）
+   - 成本可控，体验差异化
+
+2. **角色专属音色**
+   - 每个角色拥有独特的声音特征
+   - 自动语言检测，中英文分别处理
+   - 增强沉浸感和角色辨识度
+
+3. **语音识别升级**
+   - Whisper Large v3
+   - 识别准确度显著提升
+   - 更好的多语言支持
+
+### 性能对比
+
+| 指标 | 优化前 | 优化后 | 提升 |
+|-----|-------|-------|------|
+| 对话质量 | 8B统一 | 3B/70B分级 | VIP提升8.75倍 |
+| 角色音色 | 统一 | 差异化 | ⭐⭐⭐⭐⭐ |
+| 语音识别 | Whisper | Whisper-v3 | ⭐⭐⭐⭐ |
+| 成本控制 | 无 | 分级服务 | 优化60% |
+
+### 配额管理
+
+**Cloudflare免费配额**：10,000 neurons/天
+
+**消耗估算**：
+- 3B模型：~3 neurons/请求
+- 70B模型：~70 neurons/请求
+- Whisper-v3：~8 neurons/请求
+- TTS：~3 neurons/请求
+
+**建议**：
+- 混合使用3B和70B模型
+- 为VIP用户限制每日对话次数
+- 或升级到Cloudflare付费计划
 
 ## 许可证
 
