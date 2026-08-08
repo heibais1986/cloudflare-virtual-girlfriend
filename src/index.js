@@ -699,19 +699,19 @@ async function handleTTSSpeak(request, env, corsHeaders) {
   }
 
   try {
-    // Character-specific voice mapping for English
-    // Note: aura-luna-en/asteria-en/stella-en have been removed from Cloudflare catalog.
-    // Using aura-1 (context-aware TTS) as the primary English voice.
-    const voiceMap = {
-      yuki: '@cf/deepgram/aura-1',      // Gentle, warm voice
-      aria: '@cf/deepgram/aura-1',      // Mysterious, cool voice
-      luna: '@cf/deepgram/aura-1'       // Energetic, cheerful voice
+    // Character-specific speaker mapping for aura-1 (context-aware TTS)
+    // aura-1 supports a 'speaker' parameter. Default is 'angus' (male voice).
+    // Use female speakers for characters to maintain consistent voice.
+    const speakerMap = {
+      yuki: 'luna',      // Gentle, warm female voice
+      aria: 'asteria',   // Mysterious, cool female voice
+      luna: 'stella'     // Energetic, cheerful female voice
     };
     
     let audioBuffer;
     let modelUsed;
     
-    // Use melotts for Chinese, aura-1 for English
+    // Use melotts for Chinese, aura-1 with speaker for English
     if (language === 'zh' || /[\u4e00-\u9fa5]/.test(text)) {
       // Chinese text - use melotts
       try {
@@ -729,13 +729,16 @@ async function handleTTSSpeak(request, env, corsHeaders) {
         audioBuffer = await env.AI.run('@cf/deepgram/aura-2-en', { text: text });
       }
     } else {
-      // English text - use aura-1 (context-aware TTS)
-      const voiceModel = voiceMap[character] || '@cf/deepgram/aura-2-en';
+      // English text - use aura-1 with character-specific speaker
+      const speaker = speakerMap[character] || 'luna';
       try {
-        modelUsed = voiceModel;
-        audioBuffer = await env.AI.run(voiceModel, { text: text });
+        modelUsed = '@cf/deepgram/aura-1';
+        audioBuffer = await env.AI.run('@cf/deepgram/aura-1', { 
+          text: text,
+          speaker: speaker
+        });
       } catch (voiceError) {
-        console.log(`${voiceModel} failed, falling back to aura-2-en:`, voiceError.message);
+        console.log(`aura-1 failed for speaker=${speaker}, falling back to aura-2-en:`, voiceError.message);
         modelUsed = '@cf/deepgram/aura-2-en';
         audioBuffer = await env.AI.run('@cf/deepgram/aura-2-en', { text: text });
       }
@@ -982,19 +985,22 @@ async function handleChatVoice(request, env, corsHeaders) {
           }
         );
       } else {
-        // English - use aura-1 (context-aware TTS)
-        // Note: aura-luna-en/asteria-en/stella-en removed from Cloudflare catalog
-        const voiceMap = {
-          yuki: '@cf/deepgram/aura-1',      // Gentle voice
-          aria: '@cf/deepgram/aura-1',      // Mysterious voice
-          luna: '@cf/deepgram/aura-1'       // Energetic voice
+        // English - use aura-1 with character-specific speaker
+        // aura-1 default speaker is 'angus' (male). Use female speakers for consistency.
+        const speakerMap = {
+          yuki: 'luna',      // Gentle voice
+          aria: 'asteria',   // Mysterious voice
+          luna: 'stella'     // Energetic voice
         };
-        const voiceModel = voiceMap[character] || '@cf/deepgram/aura-2-en';
+        const speaker = speakerMap[character] || 'luna';
         
         try {
-          ttsResponse = await env.AI.run(voiceModel, { text: reply });
+          ttsResponse = await env.AI.run('@cf/deepgram/aura-1', {
+            text: reply,
+            speaker: speaker
+          });
         } catch (voiceError) {
-          console.log(`${voiceModel} failed, falling back to aura-2-en:`, voiceError.message);
+          console.log(`aura-1 failed for speaker=${speaker}, falling back to aura-2-en:`, voiceError.message);
           ttsResponse = await env.AI.run('@cf/deepgram/aura-2-en', { text: reply });
         }
       }
@@ -1750,15 +1756,18 @@ async function handleVoiceCallProcess(request, env, corsHeaders) {
         lang: 'zh'
       });
     } else {
-      // English - use aura-1 (context-aware TTS)
-      // Note: aura-luna-en/asteria-en/stella-en removed from Cloudflare catalog
-      const voiceMap = {
-        yuki: '@cf/deepgram/aura-1',
-        aria: '@cf/deepgram/aura-1',
-        luna: '@cf/deepgram/aura-1'
+      // English - use aura-1 with character-specific speaker
+      // aura-1 default speaker is 'angus' (male). Use female speakers for consistency.
+      const speakerMap = {
+        yuki: 'luna',
+        aria: 'asteria',
+        luna: 'stella'
       };
-      const voiceModel = voiceMap[characterId] || '@cf/deepgram/aura-2-en';
-      ttsResult = await env.AI.run(voiceModel, { text: cleanResponse });
+      const speaker = speakerMap[characterId] || 'luna';
+      ttsResult = await env.AI.run('@cf/deepgram/aura-1', {
+        text: cleanResponse,
+        speaker: speaker
+      });
     }
     
     // Convert audio to base64 for JSON response

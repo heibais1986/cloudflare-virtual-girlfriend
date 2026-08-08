@@ -11,7 +11,7 @@ html_handling = "auto-trailing-slash"
 [[d1_databases]]
 binding = "DB"
 database_name = "virtual-girlfriend"
-database_id = "auto"
+database_id = "29a450e0-591b-402c-827e-bd69bd12b1fc"
 
 # R2 bucket for media storage (photos/videos)
 [[r2_buckets]]
