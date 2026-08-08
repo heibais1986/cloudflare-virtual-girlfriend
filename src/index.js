@@ -700,16 +700,18 @@ async function handleTTSSpeak(request, env, corsHeaders) {
 
   try {
     // Character-specific voice mapping for English
+    // Note: aura-luna-en/asteria-en/stella-en have been removed from Cloudflare catalog.
+    // Using aura-1 (context-aware TTS) as the primary English voice.
     const voiceMap = {
-      yuki: '@cf/deepgram/aura-luna-en',      // Gentle, warm voice
-      aria: '@cf/deepgram/aura-asteria-en',   // Mysterious, cool voice
-      luna: '@cf/deepgram/aura-stella-en'     // Energetic, cheerful voice
+      yuki: '@cf/deepgram/aura-1',      // Gentle, warm voice
+      aria: '@cf/deepgram/aura-1',      // Mysterious, cool voice
+      luna: '@cf/deepgram/aura-1'       // Energetic, cheerful voice
     };
     
     let audioBuffer;
     let modelUsed;
     
-    // Use melotts for Chinese, character-specific voices for English
+    // Use melotts for Chinese, aura-1 for English
     if (language === 'zh' || /[\u4e00-\u9fa5]/.test(text)) {
       // Chinese text - use melotts
       try {
@@ -727,7 +729,7 @@ async function handleTTSSpeak(request, env, corsHeaders) {
         audioBuffer = await env.AI.run('@cf/deepgram/aura-2-en', { text: text });
       }
     } else {
-      // English text - use character-specific voice
+      // English text - use aura-1 (context-aware TTS)
       const voiceModel = voiceMap[character] || '@cf/deepgram/aura-2-en';
       try {
         modelUsed = voiceModel;
@@ -980,11 +982,12 @@ async function handleChatVoice(request, env, corsHeaders) {
           }
         );
       } else {
-        // English - use character-specific voice
+        // English - use aura-1 (context-aware TTS)
+        // Note: aura-luna-en/asteria-en/stella-en removed from Cloudflare catalog
         const voiceMap = {
-          yuki: '@cf/deepgram/aura-luna-en',      // Gentle voice
-          aria: '@cf/deepgram/aura-asteria-en',   // Mysterious voice
-          luna: '@cf/deepgram/aura-stella-en'     // Energetic voice
+          yuki: '@cf/deepgram/aura-1',      // Gentle voice
+          aria: '@cf/deepgram/aura-1',      // Mysterious voice
+          luna: '@cf/deepgram/aura-1'       // Energetic voice
         };
         const voiceModel = voiceMap[character] || '@cf/deepgram/aura-2-en';
         
@@ -1522,8 +1525,8 @@ async function handleSpeechToText(request, env, corsHeaders) {
     const audioBuffer = await audioFile.arrayBuffer();
     const audioArray = [...new Uint8Array(audioBuffer)];
     
-    // Call Whisper API - use large-v3 for better accuracy
-    const result = await env.AI.run('@cf/openai/whisper-large-v3', {
+    // Call Whisper API - use large-v3-turbo for better accuracy
+    const result = await env.AI.run('@cf/openai/whisper-large-v3-turbo', {
       audio: audioArray
     });
     
@@ -1664,8 +1667,8 @@ async function handleVoiceCallProcess(request, env, corsHeaders) {
     const audioBuffer = await audioFile.arrayBuffer();
     const audioArray = [...new Uint8Array(audioBuffer)];
     
-    // Step 1: Speech to Text (Whisper Large v3) - Realtime optimized
-    const sttResult = await env.AI.run('@cf/openai/whisper-large-v3', {
+    // Step 1: Speech to Text (Whisper Large v3 Turbo) - Realtime optimized
+    const sttResult = await env.AI.run('@cf/openai/whisper-large-v3-turbo', {
       audio: audioArray
     });
     
@@ -1747,11 +1750,12 @@ async function handleVoiceCallProcess(request, env, corsHeaders) {
         lang: 'zh'
       });
     } else {
-      // English - use character-specific voice
+      // English - use aura-1 (context-aware TTS)
+      // Note: aura-luna-en/asteria-en/stella-en removed from Cloudflare catalog
       const voiceMap = {
-        yuki: '@cf/deepgram/aura-luna-en',
-        aria: '@cf/deepgram/aura-asteria-en',
-        luna: '@cf/deepgram/aura-stella-en'
+        yuki: '@cf/deepgram/aura-1',
+        aria: '@cf/deepgram/aura-1',
+        luna: '@cf/deepgram/aura-1'
       };
       const voiceModel = voiceMap[characterId] || '@cf/deepgram/aura-2-en';
       ttsResult = await env.AI.run(voiceModel, { text: cleanResponse });

@@ -1,7 +1,7 @@
 # Cloudflare Workers AI 模型研究报告
 ## 虚拟女友项目 - 模型选型分析
 
-生成时间：2026-05-03
+生成时间：2026-08-08
 
 ---
 
@@ -21,14 +21,21 @@
 - **主要模型**：`@cf/myshell-ai/melotts`
   - 支持多语言：中文、英文、日语、韩语等
   - 使用位置：`src/index.js:710`, `src/index.js:936`
+- **英文模型**：`@cf/deepgram/aura-1`
+  - 上下文感知 TTS，自然节奏和表现力
+  - 使用位置：`src/index.js:703-707`, `src/index.js:984-988`, `src/index.js:1751-1755`
 - **备用模型**：`@cf/deepgram/aura-2-en`
   - 仅支持英文
   - 使用位置：`src/index.js:720`, `src/index.js:946`, `src/index.js:1672`
 
+> ⚠️ **重要更新（2026-08-08）**：`@cf/deepgram/aura-luna-en`、`@cf/deepgram/aura-asteria-en`、`@cf/deepgram/aura-stella-en` 已从 Cloudflare 模型目录中移除，已统一改用 `@cf/deepgram/aura-1`。
+
 ### 1.3 语音识别模型（STT）
-- **当前使用**：`@cf/openai/whisper`
-- **使用位置**：`src/index.js:1476`, `src/index.js:1619`
+- **当前使用**：`@cf/openai/whisper-large-v3-turbo`
+- **使用位置**：`src/index.js:1526`, `src/index.js:1668`
 - **功能**：VIP专属功能，用于语音输入和实时通话
+
+> ⚠️ **重要更新（2026-08-08）**：`@cf/openai/whisper-large-v3` 已从 Cloudflare 模型目录中移除，已改用 `@cf/openai/whisper-large-v3-turbo`（更快且支持 Batch）。
 
 ### 1.4 图片生成模型
 - **曾使用**：`@cf/stabilityai/stable-diffusion-xl-base-1.0`
@@ -45,11 +52,13 @@
 
 | 模型名称 | 参数量 | 特点 | 适用场景 |
 |---------|--------|------|---------|
-| **@cf/meta/llama-3.3-70b-instruct-fp8-fast** | 70B | 🌟 最新最强，FP8量化，速度快 | **强烈推荐** - 最佳对话质量 |
-| **@cf/meta/llama-3.2-11b-vision-instruct** | 11B | 支持视觉理解，多模态 | 如需图片理解功能 |
-| **@cf/meta/llama-3.2-3b-instruct** | 3B | 轻量级，响应快 | 预算有限或需要极快响应 |
-| **@cf/meta/llama-3.1-8b-instruct** | 8B | 当前使用，平衡性能 | 当前方案 |
-| **@cf/meta/llama-3.1-70b-instruct** | 70B | 高质量对话 | 高质量需求 |
+| **@cf/meta/llama-4-scout-17b-16e-instruct** | 17B MoE | 🌟 最新，多模态，16专家 | **强烈推荐** - 最佳对话质量 |
+| **@cf/meta/llama-3.3-70b-instruct-fp8-fast** | 70B | FP8量化，速度快 | 高质量对话 |
+| **@cf/openai/gpt-oss-20b** | 20B | OpenAI开源，推理强 | 高质量对话 |
+| **@cf/moonshotai/kimi-k2.7-code** | 1T | 月之暗面，262K上下文 | 长对话场景 |
+| **@cf/zai-org/glm-4.7-flash** | - | 智谱AI，131K上下文 | 多语言对话 |
+| **@cf/meta/llama-3.2-3b-instruct** | 3B | 轻量级，响应快 | 免费用户（当前方案） |
+| **@cf/meta/llama-3.1-8b-instruct** | 8B | 平衡性能 | 已弃用（Deprecated） |
 
 #### 其他可选模型
 
@@ -66,23 +75,21 @@
 | 模型名称 | 语言支持 | 特点 | 推荐度 |
 |---------|---------|------|--------|
 | **@cf/myshell-ai/melotts** | 多语言（中英日韩等） | 当前使用，质量好 | ⭐⭐⭐⭐⭐ |
+| **@cf/deepgram/aura-1** | 多语言 | 上下文感知，自然节奏 | ⭐⭐⭐⭐⭐ |
 | `@cf/deepgram/aura-2-en` | 仅英文 | 备用方案 | ⭐⭐⭐ |
-| `@cf/deepgram/aura-asteria-en` | 仅英文 | 女声，自然 | ⭐⭐⭐⭐ |
-| `@cf/deepgram/aura-luna-en` | 仅英文 | 女声，温柔 | ⭐⭐⭐⭐ |
-| `@cf/deepgram/aura-stella-en` | 仅英文 | 女声，活力 | ⭐⭐⭐⭐ |
 
-**注意**：Deepgram Aura系列有多个女声选项，可以为不同角色配置不同音色：
-- **Yuki** → `aura-luna-en` (温柔)
-- **Aria** → `aura-asteria-en` (神秘)
-- **Luna** → `aura-stella-en` (活力)
+> ⚠️ **已移除**：`aura-luna-en`、`aura-asteria-en`、`aura-stella-en` 已从 Cloudflare 目录中移除（2026-08-08）。
+> 所有角色统一使用 `@cf/deepgram/aura-1`（上下文感知 TTS，自动调整节奏和表现力）。
 
 ### 2.3 语音识别模型（STT）
 
 | 模型名称 | 语言支持 | 特点 | 推荐度 |
 |---------|---------|------|--------|
-| **@cf/openai/whisper** | 多语言 | 当前使用，准确度高 | ⭐⭐⭐⭐⭐ |
-| `@cf/openai/whisper-large-v3` | 多语言 | 更大模型，更准确 | ⭐⭐⭐⭐⭐ |
+| **@cf/openai/whisper-large-v3-turbo** | 多语言 | 当前使用，准确且快 | ⭐⭐⭐⭐⭐ |
+| `@cf/openai/whisper` | 多语言 | 基础版，准确度高 | ⭐⭐⭐⭐ |
 | `@cf/openai/whisper-tiny-en` | 仅英文 | 轻量级，速度快 | ⭐⭐⭐ |
+
+> ⚠️ **已移除**：`@cf/openai/whisper-large-v3` 已从 Cloudflare 目录中移除（2026-08-08），改用 `whisper-large-v3-turbo`。
 
 ### 2.4 图片生成模型
 
@@ -386,6 +393,6 @@ TTS: '@cf/myshell-ai/melotts'
 
 ---
 
-**报告生成时间**：2026-05-03  
-**项目版本**：当前使用 Llama 3.1 8B  
+**报告生成时间**：2026-08-08  
+**项目版本**：当前使用 Llama 3.3 70B (VIP) / Llama 3.2 3B (免费)  
 **建议更新周期**：每季度重新评估模型选择
