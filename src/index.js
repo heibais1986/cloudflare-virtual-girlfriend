@@ -1649,8 +1649,31 @@ async function handleVoiceCallProcess(request, env, corsHeaders) {
   }
   
   const token = authHeader.substring(7);
-  
+
   try {
+    // Enforce VIP access before spending any AI quota. The client only ever
+    // calls this endpoint directly, so the check in handleVoiceCallStart is
+    // never seen in practice.
+    const session = await env.DB.prepare(`
+      SELECT user_id FROM sessions
+      WHERE token = ? AND expires_at > datetime('now')
+    `).bind(token).first();
+
+    if (!session) {
+      return new Response(JSON.stringify({ error: '登录已过期' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+
+    const isVip = await checkUserVipStatus(session.user_id, env);
+    if (!isVip) {
+      return new Response(JSON.stringify({ error: 'VIP会员专属功能', vip_required: true }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+
     // Parse multipart form data
     const formData = await request.formData();
     const audioFile = formData.get('audio');
@@ -1720,14 +1743,6 @@ async function handleVoiceCallProcess(request, env, corsHeaders) {
     
     // Add current user message
     messages.push({ role: 'user', content: userText });
-    
-    // Check VIP status for model selection
-    const session = await env.DB.prepare(`
-      SELECT user_id FROM sessions
-      WHERE token = ? AND expires_at > datetime('now')
-    `).bind(token).first();
-    
-    const isVip = session ? await checkUserVipStatus(session.user_id, env) : false;
     
     // Select model - VIP gets better model even in voice calls
     const modelName = isVip ? MODELS.llmVip : MODELS.llmFree;

@@ -1329,6 +1329,23 @@ class PhotoRequestController {
   }
 }
 
+// Pick the first MediaRecorder mime type this browser supports. Safari has no
+// webm (it records mp4/aac instead); the server-side Whisper accepts all of them.
+function pickRecorderMime() {
+  const candidates = [
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/mp4',
+    'audio/ogg;codecs=opus'
+  ];
+  for (const type of candidates) {
+    try {
+      if (MediaRecorder.isTypeSupported(type)) return type;
+    } catch (e) { /* try next */ }
+  }
+  return '';
+}
+
 // ============================================
 // Voice Input Controller
 // ============================================
@@ -1462,11 +1479,12 @@ class VoiceInputController {
       }
       
       // Initialize MediaRecorder
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : 'audio/webm';
-      
-      this.mediaRecorder = new MediaRecorder(stream, { mimeType });
+      const mimeType = pickRecorderMime();
+
+      this.mediaRecorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
+      this.recorderMime = mimeType || 'audio/webm';
       this.audioChunks = [];
       
       this.mediaRecorder.ondataavailable = (e) => {
@@ -1590,8 +1608,8 @@ class VoiceInputController {
     
     try {
       // Create audio blob and convert to WAV
-      const webmBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
-      const wavBlob = await this.convertToWav(webmBlob);
+      const audioBlob = new Blob(this.audioChunks, { type: this.recorderMime || 'audio/webm' });
+      const wavBlob = await this.convertToWav(audioBlob);
       
       // Send to API
       const text = await this.transcribe(wavBlob);
@@ -1967,11 +1985,12 @@ class VoiceCallController {
   }
   
   startRecording(stream) {
-    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-      ? 'audio/webm;codecs=opus'
-      : 'audio/webm';
-    
-    this.mediaRecorder = new MediaRecorder(stream, { mimeType });
+    const mimeType = pickRecorderMime();
+
+    this.mediaRecorder = mimeType
+      ? new MediaRecorder(stream, { mimeType })
+      : new MediaRecorder(stream);
+    this.recorderMime = mimeType || 'audio/webm';
     this.audioChunks = [];
     
     this.mediaRecorder.ondataavailable = (e) => {
@@ -2028,8 +2047,8 @@ class VoiceCallController {
         // Silence detected after speaking
         const silenceDuration = now - this.lastSoundTime;
         
-        // Process with AI after 1.5 seconds of silence
-        if (silenceDuration > 1500 && !this.silenceTimeout) {
+        // Process with AI after 0.8 seconds of silence
+        if (silenceDuration > 800 && !this.silenceTimeout) {
           console.log('Silence detected, processing with AI, silence:', silenceDuration, 'audioChunks:', this.audioChunks.length);
           this.silenceTimeout = setTimeout(() => {
             if (this.isInCall) {
@@ -2063,8 +2082,8 @@ class VoiceCallController {
     
     try {
       // Convert to WAV
-      const webmBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
-      const wavBlob = await this.convertToWav(webmBlob);
+      const audioBlob = new Blob(this.audioChunks, { type: this.recorderMime || 'audio/webm' });
+      const wavBlob = await this.convertToWav(audioBlob);
       
       // Clear audio chunks after converting
       this.audioChunks = [];
@@ -2085,7 +2104,14 @@ class VoiceCallController {
       });
       
       const data = await response.json();
-      
+
+      // VIP lapsed mid-call (the server enforces VIP on this endpoint)
+      if (data.vip_required) {
+        this.chatController.showVipModal();
+        this.endCall();
+        return;
+      }
+
       if (data.success && data.audio) {
         // Add to history
         if (data.text) {
@@ -2127,6 +2153,9 @@ class VoiceCallController {
     
     this.updateStatus('speaking');
     this.isPlaying = true;
+    // Drop audio recorded up to now (tail of the user's utterance) so it does
+    // not leak into the next one
+    this.audioChunks = [];
     
     try {
       console.log('Decoding base64 audio, length:', base64Audio.length);
@@ -2158,6 +2187,9 @@ class VoiceCallController {
       this.currentAudio.onended = () => {
         console.log('Audio ended');
         this.isPlaying = false;
+        // Discard everything recorded while the AI was speaking (silence/echo);
+        // otherwise it pollutes the next utterance sent to Whisper
+        this.audioChunks = [];
         URL.revokeObjectURL(audioUrl);
         if (this.isInCall) {
           this.updateStatus('listening');
