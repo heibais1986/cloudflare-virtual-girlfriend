@@ -1607,13 +1607,15 @@ class VoiceInputController {
     this.elements.voiceBtn.classList.add('processing');
     
     try {
-      // Create audio blob and convert to WAV
+      // Send the raw recording (webm/opus, mp4, ogg…) — much smaller than WAV
       const audioBlob = new Blob(this.audioChunks, { type: this.recorderMime || 'audio/webm' });
-      const wavBlob = await this.convertToWav(audioBlob);
-      
-      // Send to API
-      const text = await this.transcribe(wavBlob);
-      
+      let text = await this.transcribe(audioBlob);
+      if (text === null) {
+        // Server could not decode the raw container — retry once as WAV
+        const wavBlob = await this.convertToWav(audioBlob);
+        text = await this.transcribe(wavBlob);
+      }
+
       if (text && text.trim()) {
         // Send message
         this.chatController.sendMessage(text);
@@ -1634,7 +1636,7 @@ class VoiceInputController {
     const token = localStorage.getItem('token');
     
     const formData = new FormData();
-    formData.append('audio', audioBlob, 'recording.wav');
+    formData.append('audio', audioBlob, 'recording');
     
     const response = await fetch(`${API_BASE_URL}/api/speech-to-text`, {
       method: 'POST',
@@ -1645,16 +1647,21 @@ class VoiceInputController {
     });
     
     const data = await response.json();
-    
+
     if (data.vip_required) {
       this.chatController.showVipModal();
       throw new Error('VIP required');
     }
-    
+
+    // Server could not decode the raw recording — caller retries as WAV
+    if (data.retry_with_wav) {
+      return null;
+    }
+
     if (!data.success) {
       throw new Error(data.error || 'Transcription failed');
     }
-    
+
     return data.text;
   }
   
@@ -1779,6 +1786,8 @@ class VoiceCallController {
     this.audioChunks = [];
     this.isPlaying = false;
     this.currentAudio = null;
+    this.playChain = null;    // serialized playback of streamed reply clips
+    this.aiSpeaking = false;  // true from the first reply clip until queue drained
     
     // Silence detection
     this.speakingThreshold = 0.05;  // level to consider user is speaking
@@ -1928,7 +1937,38 @@ class VoiceCallController {
     // Show connecting state
     this.showState('connecting');
     this.updateCharacterInfo();
-    
+
+    // Register the call server-side and load recent call history so the
+    // conversation continues where the last call ended
+    this.conversationHistory = [];
+    this.playChain = null;
+    this.aiSpeaking = false;
+    this.callId = null;
+
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_BASE_URL}/api/voice-call/start`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        },
+        body: JSON.stringify({ character_id: this.chatController.currentCharacter })
+      });
+      const startData = await res.json();
+      if (startData.vip_required) {
+        this.chatController.showVipModal();
+        this.closeOverlay();
+        return;
+      }
+      this.callId = startData.call_id || null;
+      if (Array.isArray(startData.history) && startData.history.length) {
+        this.conversationHistory = startData.history;
+      }
+    } catch (e) {
+      console.log('voice-call/start failed, continuing without server history:', e);
+    }
+
     try {
       // Request microphone permission
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -2022,8 +2062,8 @@ class VoiceCallController {
       // Update waveform visualization
       this.updateWaveform(normalizedLevel);
       
-      // Skip detection if audio is playing (avoid echo feedback)
-      if (this.isPlaying) {
+      // Skip detection while the AI reply is playing (avoid echo feedback)
+      if (this.isPlaying || this.aiSpeaking) {
         requestAnimationFrame(checkAudio);
         return;
       }
@@ -2068,52 +2108,89 @@ class VoiceCallController {
   async processWithAI() {
     // Reset silence timeout so next utterance can trigger again
     this.silenceTimeout = null;
-    
+
     console.log('processWithAI called, audioChunks:', this.audioChunks.length, 'isMuted:', this.isMuted);
-    
-    if (this.isMuted || this.audioChunks.length === 0) {
-      console.log('Skipping AI processing: muted or no audio chunks');
+
+    if (this.isMuted || this.aiSpeaking || this.audioChunks.length === 0) {
+      console.log('Skipping AI processing: muted, AI speaking, or no audio');
       this.isSpeaking = false;
       return;
     }
-    
+
     this.updateStatus('processing');
     this.isSpeaking = false;
-    
-    try {
-      // Convert to WAV
-      const audioBlob = new Blob(this.audioChunks, { type: this.recorderMime || 'audio/webm' });
-      const wavBlob = await this.convertToWav(audioBlob);
-      
-      // Clear audio chunks after converting
-      this.audioChunks = [];
-      
-      // Send to API
-      const token = localStorage.getItem('token');
-      const formData = new FormData();
-      formData.append('audio', wavBlob, 'recording.wav');
-      formData.append('character_id', this.chatController.currentCharacter);
-      formData.append('history', JSON.stringify(this.conversationHistory.slice(-6)));
-      
-      const response = await fetch(`${API_BASE_URL}/api/voice-call/process`, {
-        method: 'POST',
-        headers: {
-          'Authorization': token ? `Bearer ${token}` : ''
-        },
-        body: formData
-      });
-      
-      const data = await response.json();
 
-      // VIP lapsed mid-call (the server enforces VIP on this endpoint)
-      if (data.vip_required) {
+    // Send the raw browser recording (webm/opus, mp4, ogg…) — about 10x
+    // smaller than the 16kHz WAV conversion
+    const rawBlob = new Blob(this.audioChunks, { type: this.recorderMime || 'audio/webm' });
+    this.audioChunks = [];
+
+    try {
+      const accepted = await this.sendAudioToAI(rawBlob);
+      if (!accepted) {
+        // Server could not decode the raw container — retry once as WAV
+        console.log('Retrying with WAV conversion');
+        const wavBlob = await this.convertToWav(rawBlob);
+        await this.sendAudioToAI(wavBlob);
+      }
+    } catch (error) {
+      console.error('AI processing error:', error);
+    }
+
+    // Stop speaking-state tracking once the whole reply chain has played
+    if (this.playChain) {
+      this.playChain.then(() => { this.aiSpeaking = false; });
+    } else {
+      this.aiSpeaking = false;
+    }
+
+    // Resume listening once the streamed reply has finished playing
+    const resume = () => {
+      if (this.isInCall && !this.aiSpeaking) {
+        this.updateStatus('listening');
+      }
+    };
+    if (this.playChain) {
+      this.playChain.then(resume);
+    } else {
+      resume();
+    }
+  }
+
+  // Send one recording to /api/voice-call/process and consume the NDJSON
+  // event stream. Returns false when the server asks for a WAV retry.
+  async sendAudioToAI(audioBlob) {
+    const token = localStorage.getItem('token');
+    const formData = new FormData();
+    formData.append('audio', audioBlob, 'recording');
+    formData.append('character_id', this.chatController.currentCharacter);
+    formData.append('history', JSON.stringify(this.conversationHistory.slice(-6)));
+
+    const response = await fetch(`${API_BASE_URL}/api/voice-call/process`, {
+      method: 'POST',
+      headers: {
+        'Authorization': token ? `Bearer ${token}` : ''
+      },
+      body: formData
+    });
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      if (errData.vip_required) {
+        // VIP lapsed mid-call (the server enforces VIP on this endpoint)
         this.chatController.showVipModal();
         this.endCall();
-        return;
+        return true;
       }
+      throw new Error(errData.error || `HTTP ${response.status}`);
+    }
 
+    const contentType = response.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      const data = await response.json();
+      if (data.retry_with_wav) return false;
       if (data.success && data.audio) {
-        // Add to history
+        // Legacy single-audio response
         if (data.text) {
           this.conversationHistory.push({ role: 'user', content: data.text });
           this.showTranscript(data.text);
@@ -2121,19 +2198,51 @@ class VoiceCallController {
         if (data.response) {
           this.conversationHistory.push({ role: 'assistant', content: data.response });
         }
-        
-        // Play AI response
-        await this.playAudioBase64(data.audio);
+        this.enqueueReplyAudio(data.audio);
       }
-      
-    } catch (error) {
-      console.error('AI processing error:', error);
+      return true;
     }
-    
-    // Resume listening
-    if (this.isInCall) {
-      this.updateStatus('listening');
+
+    // NDJSON event stream: {transcript, audio, audio_skip, done, error}
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        let ev;
+        try { ev = JSON.parse(line); } catch (e) { continue; }
+
+        if (ev.type === 'transcript') {
+          this.conversationHistory.push({ role: 'user', content: ev.text });
+          this.showTranscript(ev.text);
+        } else if (ev.type === 'audio' && ev.audio) {
+          this.enqueueReplyAudio(ev.audio);
+        } else if (ev.type === 'done') {
+          if (ev.text) {
+            this.conversationHistory.push({ role: 'assistant', content: ev.text });
+          }
+        } else if (ev.type === 'error') {
+          console.error('Voice call stream error:', ev.message);
+        }
+      }
     }
+    return true;
+  }
+
+  // Queue a reply clip; clips play one after another in stream order
+  enqueueReplyAudio(base64Audio) {
+    this.aiSpeaking = true;
+    this.playChain = (this.playChain || Promise.resolve())
+      .then(() => this.playAudioBase64(base64Audio))
+      .catch(e => console.error('Reply playback error:', e.name, e.message));
   }
   
   showTranscript(text) {
@@ -2143,20 +2252,17 @@ class VoiceCallController {
     setTimeout(() => { el.style.display = 'none'; }, 3000);
   }
   
+  // Play one reply clip; resolves when playback ends or fails, so reply
+  // clips can be chained sequentially
   async playAudioBase64(base64Audio) {
     console.log('playAudioBase64 called, isPlaying:', this.isPlaying);
-    
-    if (this.isPlaying) {
-      console.log('Already playing, skip');
-      return;
-    }
-    
+
     this.updateStatus('speaking');
     this.isPlaying = true;
     // Drop audio recorded up to now (tail of the user's utterance) so it does
     // not leak into the next one
     this.audioChunks = [];
-    
+
     try {
       console.log('Decoding base64 audio, length:', base64Audio.length);
       const audioData = atob(base64Audio);
@@ -2165,43 +2271,36 @@ class VoiceCallController {
       for (let i = 0; i < audioData.length; i++) {
         view[i] = audioData.charCodeAt(i);
       }
-      
+
       const audioBlob = new Blob([arrayBuffer], { type: 'audio/wav' });
       const audioUrl = URL.createObjectURL(audioBlob);
-      
+
       console.log('Creating audio element, blob size:', audioBlob.size);
       this.currentAudio = new Audio(audioUrl);
-      
+
       // Set volume
       this.currentAudio.volume = this.isSpeakerOn ? 1.0 : 0.5;
-      
-      // Log events for debugging
-      this.currentAudio.oncanplay = () => console.log('Audio can play');
-      this.currentAudio.onplay = () => console.log('Audio started playing');
-      this.currentAudio.onerror = (e) => console.error('Audio error:', e);
-      
-      console.log('Calling play()...');
+
       await this.currentAudio.play();
       console.log('play() succeeded');
-      
-      this.currentAudio.onended = () => {
-        console.log('Audio ended');
-        this.isPlaying = false;
-        // Discard everything recorded while the AI was speaking (silence/echo);
-        // otherwise it pollutes the next utterance sent to Whisper
-        this.audioChunks = [];
-        URL.revokeObjectURL(audioUrl);
-        if (this.isInCall) {
-          this.updateStatus('listening');
-        }
-      };
-      
+
+      await new Promise((resolve) => {
+        this.currentAudio.onended = resolve;
+        this.currentAudio.onerror = (e) => {
+          console.error('Audio error:', e);
+          resolve();
+        };
+      });
+
+      URL.revokeObjectURL(audioUrl);
+
     } catch (error) {
       console.error('Audio playback error:', error.name, error.message);
+    } finally {
       this.isPlaying = false;
-      if (this.isInCall) {
-        this.updateStatus('listening');
-      }
+      // Discard everything recorded while the AI was speaking (silence/echo);
+      // otherwise it pollutes the next utterance sent to Whisper
+      this.audioChunks = [];
     }
   }
   
@@ -2362,6 +2461,28 @@ class VoiceCallController {
     if (this.audioContext) {
       this.audioContext.close();
     }
+
+    // Report the call server-side for records (best-effort)
+    const callDuration = this.startTime ? Math.floor((Date.now() - this.startTime) / 1000) : 0;
+    const token = localStorage.getItem('token');
+    fetch(`${API_BASE_URL}/api/voice-call/end`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': token ? `Bearer ${token}` : ''
+      },
+      body: JSON.stringify({
+        call_id: this.callId,
+        character_id: this.chatController.currentCharacter,
+        duration: callDuration,
+        message_count: this.conversationHistory.length
+      })
+    }).catch(e => console.log('voice-call/end failed:', e));
+
+    // Reset playback/stream state
+    this.playChain = null;
+    this.aiSpeaking = false;
+    this.callId = null;
     
     // Show end state
     const duration = this.startTime ? Math.floor((Date.now() - this.startTime) / 1000) : 0;

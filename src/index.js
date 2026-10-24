@@ -30,6 +30,54 @@ async function runChatLLM(env, { modelName, messages, maxTokens, temperature = 0
   return reply.replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '').trim() || reply;
 }
 
+// Run a chat LLM in streaming mode and return the raw Workers AI event stream
+// (SSE lines "data: {...}" where each event carries {p, response}).
+async function runChatLLMStream(env, { modelName, messages, maxTokens, temperature = 0.7 }) {
+  if (modelName === MODELS.llmFree) {
+    messages[0].content += '\n/no_think';
+  }
+  return await env.AI.run(modelName, {
+    messages,
+    max_tokens: maxTokens,
+    temperature,
+    stream: true
+  });
+}
+
+// Synthesize speech with the language-appropriate model and character voice:
+// Chinese via melotts, English via aura-1 with the character's female speaker,
+// falling back to the cheaper model on failure.
+async function synthesizeSpeech(env, text, characterId) {
+  const hasChinese = /[\u4e00-\u9fa5]/.test(text);
+  if (hasChinese) {
+    try {
+      return await env.AI.run(MODELS.ttsZh, { text, lang: 'zh' });
+    } catch (e) {
+      console.log('melotts failed, falling back to aura-1:', e.message);
+      return await env.AI.run(MODELS.ttsEn, { text });
+    }
+  }
+  const speakerMap = { yuki: 'luna', aria: 'asteria', luna: 'stella' };
+  const speaker = speakerMap[characterId] || 'luna';
+  try {
+    return await env.AI.run(MODELS.ttsEn, { text, speaker });
+  } catch (e) {
+    console.log(`aura-1 failed for speaker=${speaker}, falling back to melotts:`, e.message);
+    return await env.AI.run(MODELS.ttsFallback, { text, lang: 'en' });
+  }
+}
+
+// Base64-encode binary data in chunks (avoids the spread call-stack limit)
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(binary);
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -147,7 +195,7 @@ export default {
       }
       
       if (path === '/api/voice-call/process' && request.method === 'POST') {
-        return await handleVoiceCallProcess(request, env, corsHeaders);
+        return await handleVoiceCallProcess(request, env, corsHeaders, ctx);
       }
       
       if (path === '/api/voice-call/end' && request.method === 'POST') {
@@ -1530,14 +1578,26 @@ async function handleSpeechToText(request, env, corsHeaders) {
       });
     }
     
-    // Convert audio to Uint8Array
-    const audioBuffer = await audioFile.arrayBuffer();
-    const audioArray = [...new Uint8Array(audioBuffer)];
-    
-    // Call Whisper API - use large-v3-turbo for better accuracy
-    const result = await env.AI.run(MODELS.stt, {
-      audio: audioArray
-    });
+    // Upload the recording as-is (webm/opus, mp4, ogg… all accepted); the
+    // client falls back to 16kHz WAV if this fails
+    let result;
+    try {
+      result = await env.AI.run(MODELS.stt, {
+        audio: new Uint8Array(await audioFile.arrayBuffer()),
+        vad_filter: true,
+        condition_on_previous_text: false,
+        hallucination_silence_threshold: 2
+      });
+    } catch (sttError) {
+      console.log('Speech to text audio error:', sttError.message);
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'audio_format',
+        retry_with_wav: true
+      }), {
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
     
     // Return transcription
     return new Response(JSON.stringify({
@@ -1613,13 +1673,31 @@ async function handleVoiceCallStart(request, env, corsHeaders) {
     
     // Generate call ID
     const callId = `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
+
+    // Recent turns for this character so the call continues the previous
+    // conversation (best-effort; table may not exist on old DBs)
+    let history = [];
+    try {
+      const rows = await env.DB.prepare(`
+        SELECT user_text, ai_response FROM voice_call_messages
+        WHERE user_id = ? AND character_id = ?
+        ORDER BY id DESC LIMIT 6
+      `).bind(session.id, character_id).all();
+      history = (rows.results || []).reverse().flatMap(row => ([
+        { role: 'user', content: row.user_text },
+        { role: 'assistant', content: row.ai_response }
+      ]));
+    } catch (e) {
+      console.log('voice_call_messages query failed:', e.message);
+    }
+
     // Return call session info
     return new Response(JSON.stringify({
       success: true,
       call_id: callId,
       character_id: character_id,
       user_id: session.id,
+      history: history,
       started_at: new Date().toISOString()
     }), {
       headers: { 'Content-Type': 'application/json', ...corsHeaders }
@@ -1637,8 +1715,9 @@ async function handleVoiceCallStart(request, env, corsHeaders) {
   }
 }
 
-// Process audio chunk and return AI response (Realtime optimized)
-async function handleVoiceCallProcess(request, env, corsHeaders) {
+// Process audio chunk and stream the AI reply back as NDJSON events
+// ({transcript, audio*, audio_skip*, done, error}) for low-latency playback
+async function handleVoiceCallProcess(request, env, corsHeaders, ctx) {
   const authHeader = request.headers.get('Authorization');
   
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -1695,16 +1774,29 @@ async function handleVoiceCallProcess(request, env, corsHeaders) {
       history = [];
     }
     
-    // Convert audio to Uint8Array
-    const audioBuffer = await audioFile.arrayBuffer();
-    const audioArray = [...new Uint8Array(audioBuffer)];
-    
-    // Step 1: Speech to Text (Whisper Large v3 Turbo) - Realtime optimized
-    const sttResult = await env.AI.run(MODELS.stt, {
-      audio: audioArray
-    });
-    
-    const userText = sttResult.text || '';
+    // Step 1: Speech to Text (Whisper Large v3 Turbo) - Realtime optimized.
+    // The browser recording (webm/opus, mp4, ogg…) is uploaded as-is; the
+    // client falls back to 16kHz WAV if the server cannot decode it.
+    let sttResult;
+    try {
+      sttResult = await env.AI.run(MODELS.stt, {
+        audio: new Uint8Array(await audioFile.arrayBuffer()),
+        vad_filter: true,
+        condition_on_previous_text: false,
+        hallucination_silence_threshold: 2
+      });
+    } catch (sttError) {
+      console.log('Voice call STT error:', sttError.message);
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'audio_format',
+        retry_with_wav: true
+      }), {
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+
+    const userText = (sttResult.text || '').trim();
     
     console.log('Voice call STT result:', userText);
     
@@ -1749,49 +1841,99 @@ async function handleVoiceCallProcess(request, env, corsHeaders) {
 
     const maxTokens = isVip ? 120 : 80;  // Shorter for voice, but VIP gets more
 
-    // Generate response - Realtime optimized with lower latency
-    const aiResponse = await runChatLLM(env, { modelName, messages, maxTokens });
-    
-    // Step 3: Text to Speech - Realtime optimized with character-specific voice
-    const cleanResponse = aiResponse.replace(/\*([^*]+)\*/g, '').trim();
-    
-    // Detect language and select appropriate voice
-    const hasChinese = /[\u4e00-\u9fa5]/.test(cleanResponse);
-    let ttsResult;
-    
-    if (hasChinese) {
-      // Chinese - use melotts
-      ttsResult = await env.AI.run(MODELS.ttsZh, {
-        text: cleanResponse,
-        lang: 'zh'
-      });
-    } else {
-      // English - use aura-1 with character-specific speaker
-      // aura-1 default speaker is 'angus' (male). Use female speakers for consistency.
-      const speakerMap = {
-        yuki: 'luna',
-        aria: 'asteria',
-        luna: 'stella'
-      };
-      const speaker = speakerMap[characterId] || 'luna';
-      ttsResult = await env.AI.run(MODELS.ttsEn, {
-        text: cleanResponse,
-        speaker: speaker
-      });
-    }
-    
-    // Convert audio to base64 for JSON response
-    const uint8Array = new Uint8Array(ttsResult);
-    const audioBase64 = btoa(String.fromCharCode(...uint8Array));
-    
-    // Return response with text and audio
-    return new Response(JSON.stringify({
-      success: true,
-      text: userText,
-      response: aiResponse,
-      audio: audioBase64
-    }), {
-      headers: { 'Content-Type': 'application/json', ...corsHeaders }
+    // Steps 2+3 stream as one NDJSON response (one JSON object per line):
+    // LLM tokens are grouped into sentences and each sentence is synthesized
+    // right away, so the client can start playing before the reply finishes.
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      async start(controller) {
+        const send = (obj) => controller.enqueue(encoder.encode(JSON.stringify(obj) + '\n'));
+        let fullReply = '';
+
+        try {
+          send({ type: 'transcript', text: userText });
+
+          const llmStream = await runChatLLMStream(env, { modelName, messages, maxTokens });
+          const reader = llmStream.getReader();
+          const decoder = new TextDecoder();
+          let sseBuffer = '';
+          let sentenceBuffer = '';
+          let seq = 0;
+
+          const speakSentence = async (piece) => {
+            const cleaned = piece.replace(/\*([^*]+)\*/g, '').trim();
+            if (!cleaned) return;
+            try {
+              const audio = await synthesizeSpeech(env, cleaned, characterId);
+              send({ type: 'audio', seq: seq++, audio: arrayBufferToBase64(audio) });
+            } catch (ttsError) {
+              console.log('Sentence TTS failed, skipping:', ttsError.message);
+              send({ type: 'audio_skip', seq: seq++ });
+            }
+          };
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            sseBuffer += decoder.decode(value, { stream: true });
+            const lines = sseBuffer.split('\n');
+            sseBuffer = lines.pop();
+
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (!trimmed.startsWith('data:')) continue;
+              const payload = trimmed.slice(5).trim();
+              if (!payload || payload === '[DONE]') continue;
+              let ev;
+              try { ev = JSON.parse(payload); } catch (e) { continue; }
+              const delta = ev.response || '';
+              if (!delta) continue;
+              fullReply += delta;
+              sentenceBuffer += delta;
+
+              // Cut at sentence enders, or at clause enders once the piece is
+              // long enough to be worth its own TTS call
+              let cut = -1;
+              for (let i = 0; i < sentenceBuffer.length; i++) {
+                const ch = sentenceBuffer[i];
+                const sentenceEnd = '。！？!?…\n'.includes(ch);
+                const clauseEnd = ',，、;；:：'.includes(ch);
+                if (sentenceEnd || (clauseEnd && i >= 60)) { cut = i; break; }
+              }
+              if (cut >= 0) {
+                const piece = sentenceBuffer.slice(0, cut + 1);
+                sentenceBuffer = sentenceBuffer.slice(cut + 1);
+                await speakSentence(piece);
+              }
+            }
+          }
+          if (sentenceBuffer.trim()) {
+            await speakSentence(sentenceBuffer);
+          }
+
+          fullReply = fullReply.trim();
+          send({ type: 'done', text: fullReply });
+
+          // Persist the turn (best-effort; table may not exist on old DBs)
+          ctx.waitUntil(env.DB.prepare(`
+            INSERT INTO voice_call_messages (user_id, character_id, user_text, ai_response)
+            VALUES (?, ?, ?, ?)
+          `).bind(session.user_id, characterId, userText, fullReply).run());
+        } catch (error) {
+          console.error('Voice call stream error:', error);
+          try { send({ type: 'error', message: error.message }); } catch (e) { /* already closing */ }
+        } finally {
+          controller.close();
+        }
+      }
+    });
+
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'application/x-ndjson',
+        'Cache-Control': 'no-store',
+        ...corsHeaders
+      }
     });
     
   } catch (error) {
@@ -1819,16 +1961,39 @@ async function handleVoiceCallEnd(request, env, corsHeaders) {
   }
   
   const token = authHeader.substring(7);
-  const { call_id, duration, transcript } = await request.json();
-  
+  const { call_id, character_id = 'yuki', duration = 0, message_count = 0 } = await request.json();
+
   try {
+    // Validate the session
+    const session = await env.DB.prepare(`
+      SELECT user_id FROM sessions
+      WHERE token = ? AND expires_at > datetime('now')
+    `).bind(token).first();
+
+    if (!session) {
+      return new Response(JSON.stringify({ error: '登录已过期' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+
+    // Store the call record (best-effort; table may not exist on old DBs)
+    try {
+      await env.DB.prepare(`
+        INSERT INTO voice_calls (user_id, character_id, call_id, duration_seconds, message_count)
+        VALUES (?, ?, ?, ?, ?)
+      `).bind(session.user_id, character_id, call_id || null, duration, message_count).run();
+    } catch (e) {
+      console.log('voice_calls insert failed:', e.message);
+    }
+
     // Return call summary
     return new Response(JSON.stringify({
       success: true,
       call_id: call_id,
       ended_at: new Date().toISOString(),
-      duration_seconds: duration || 0,
-      message_count: transcript ? transcript.length : 0
+      duration_seconds: duration,
+      message_count: message_count
     }), {
       headers: { 'Content-Type': 'application/json', ...corsHeaders }
     });
@@ -1913,6 +2078,33 @@ async function handleDatabaseInit(request, env, corsHeaders) {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (session_id) REFERENCES chat_sessions(id)
       )`,
+
+      // Voice call records (one row per call)
+      `CREATE TABLE IF NOT EXISTS voice_calls (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        character_id TEXT NOT NULL,
+        call_id TEXT,
+        duration_seconds INTEGER DEFAULT 0,
+        message_count INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      )`,
+
+      // Turns spoken during voice calls (used to continue the conversation)
+      `CREATE TABLE IF NOT EXISTS voice_call_messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        character_id TEXT NOT NULL,
+        user_text TEXT NOT NULL,
+        ai_response TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      )`,
+
+      // Voice call indexes
+      `CREATE INDEX IF NOT EXISTS idx_voice_calls_user ON voice_calls(user_id, created_at)`,
+      `CREATE INDEX IF NOT EXISTS idx_voice_call_messages_user_char ON voice_call_messages(user_id, character_id, id)`,
       
       // Character media library
       `CREATE TABLE IF NOT EXISTS character_media (
