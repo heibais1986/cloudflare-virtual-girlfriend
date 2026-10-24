@@ -4,6 +4,32 @@
  * Uses Cloudflare AI for TTS
  */
 
+// Workers AI model IDs - single source of truth (see CLOUDFLARE_AI_MODELS_RESEARCH.md)
+const MODELS = {
+  llmVip: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+  llmFree: '@cf/qwen/qwen3-30b-a3b-fp8',  // MoE, same unit price as the old llama-3.2-3b
+  ttsZh: '@cf/myshell-ai/melotts',
+  ttsEn: '@cf/deepgram/aura-1',
+  ttsFallback: '@cf/myshell-ai/melotts',  // cheap multi-language last resort
+  stt: '@cf/openai/whisper-large-v3-turbo'
+};
+
+// Run a chat LLM and return the plain reply text. Qwen3 (free tier) defaults to
+// thinking mode: the /no_think soft switch turns it off, and the strip below is
+// a safety net in case <think> blocks still slip through.
+async function runChatLLM(env, { modelName, messages, maxTokens, temperature = 0.7 }) {
+  if (modelName === MODELS.llmFree) {
+    messages[0].content += '\n/no_think';
+  }
+  const result = await env.AI.run(modelName, {
+    messages,
+    max_tokens: maxTokens,
+    temperature
+  });
+  const reply = result.response || result.content || '';
+  return reply.replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '').trim() || reply;
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -715,32 +741,32 @@ async function handleTTSSpeak(request, env, corsHeaders) {
     if (language === 'zh' || /[\u4e00-\u9fa5]/.test(text)) {
       // Chinese text - use melotts
       try {
-        modelUsed = '@cf/myshell-ai/melotts';
+        modelUsed = MODELS.ttsZh;
         audioBuffer = await env.AI.run(
-          '@cf/myshell-ai/melotts',
+          MODELS.ttsZh,
           {
             text: text,
             lang: 'zh'
           }
         );
       } catch (melottsError) {
-        console.log('melotts failed for Chinese, falling back to aura-2-en:', melottsError.message);
-        modelUsed = '@cf/deepgram/aura-2-en';
-        audioBuffer = await env.AI.run('@cf/deepgram/aura-2-en', { text: text });
+        console.log('melotts failed for Chinese, falling back to aura-1:', melottsError.message);
+        modelUsed = MODELS.ttsEn;
+        audioBuffer = await env.AI.run(MODELS.ttsEn, { text: text });
       }
     } else {
       // English text - use aura-1 with character-specific speaker
       const speaker = speakerMap[character] || 'luna';
       try {
-        modelUsed = '@cf/deepgram/aura-1';
-        audioBuffer = await env.AI.run('@cf/deepgram/aura-1', { 
+        modelUsed = MODELS.ttsEn;
+        audioBuffer = await env.AI.run(MODELS.ttsEn, {
           text: text,
           speaker: speaker
         });
       } catch (voiceError) {
-        console.log(`aura-1 failed for speaker=${speaker}, falling back to aura-2-en:`, voiceError.message);
-        modelUsed = '@cf/deepgram/aura-2-en';
-        audioBuffer = await env.AI.run('@cf/deepgram/aura-2-en', { text: text });
+        console.log(`aura-1 failed for speaker=${speaker}, falling back to melotts:`, voiceError.message);
+        modelUsed = MODELS.ttsFallback;
+        audioBuffer = await env.AI.run(MODELS.ttsFallback, { text: text, lang: 'en' });
       }
     }
 
@@ -770,8 +796,8 @@ async function handleTTSStatus(request, env, corsHeaders) {
     status: 'ok',
     features: {
       languages: ['zh', 'en', 'ja', 'ko', 'fr', 'es'],
-      primary_model: '@cf/myshell-ai/melotts',
-      fallback_model: '@cf/deepgram/aura-2-en',
+      primary_model: MODELS.ttsZh,
+      fallback_model: MODELS.ttsEn,
       lang_param: true,
       emotion_support: false,
       chinese_support: true
@@ -880,23 +906,11 @@ async function handleChat(request, env, corsHeaders, ctx) {
     messages.push({ role: 'user', content: message });
     
     // Select model based on VIP status
-    const modelName = isVip
-      ? '@cf/meta/llama-3.3-70b-instruct-fp8-fast'  // VIP: 70B model
-      : '@cf/meta/llama-3.2-3b-instruct';            // Free: 3B model
-    
+    const modelName = isVip ? MODELS.llmVip : MODELS.llmFree;
+
     const maxTokens = isVip ? 256 : 150;  // VIP gets longer responses
-    
-    // Use Cloudflare AI with selected model
-    const response = await env.AI.run(
-      modelName,
-      {
-        messages,
-        max_tokens: maxTokens,
-        temperature: 0.7
-      }
-    );
-    
-    const reply = response.response || response.content || '';
+
+    const reply = await runChatLLM(env, { modelName, messages, maxTokens });
     
     return new Response(JSON.stringify({
       reply,
@@ -951,23 +965,12 @@ async function handleChatVoice(request, env, corsHeaders) {
     const isVip = userId ? await checkUserVipStatus(userId, env) : false;
     
     // Select model based on VIP status
-    const modelName = isVip
-      ? '@cf/meta/llama-3.3-70b-instruct-fp8-fast'
-      : '@cf/meta/llama-3.2-3b-instruct';
-    
+    const modelName = isVip ? MODELS.llmVip : MODELS.llmFree;
+
     const maxTokens = isVip ? 256 : 150;
-    
+
     // Get AI response
-    const aiResponse = await env.AI.run(
-      modelName,
-      {
-        messages,
-        max_tokens: maxTokens,
-        temperature: 0.7
-      }
-    );
-    
-    const reply = aiResponse.response || aiResponse.content || '';
+    const reply = await runChatLLM(env, { modelName, messages, maxTokens });
     
     // Then generate TTS audio with character-specific voice
     let ttsResponse;
@@ -978,7 +981,7 @@ async function handleChatVoice(request, env, corsHeaders) {
       if (hasChinese) {
         // Chinese - use melotts
         ttsResponse = await env.AI.run(
-          '@cf/myshell-ai/melotts',
+          MODELS.ttsZh,
           {
             text: reply,
             lang: 'zh'
@@ -993,21 +996,21 @@ async function handleChatVoice(request, env, corsHeaders) {
           luna: 'stella'     // Energetic voice
         };
         const speaker = speakerMap[character] || 'luna';
-        
+
         try {
-          ttsResponse = await env.AI.run('@cf/deepgram/aura-1', {
+          ttsResponse = await env.AI.run(MODELS.ttsEn, {
             text: reply,
             speaker: speaker
           });
         } catch (voiceError) {
-          console.log(`aura-1 failed for speaker=${speaker}, falling back to aura-2-en:`, voiceError.message);
-          ttsResponse = await env.AI.run('@cf/deepgram/aura-2-en', { text: reply });
+          console.log(`aura-1 failed for speaker=${speaker}, falling back to melotts:`, voiceError.message);
+          ttsResponse = await env.AI.run(MODELS.ttsFallback, { text: reply, lang: 'en' });
         }
       }
     } catch (ttsError) {
       console.log('TTS failed in chat voice:', ttsError.message);
       // Final fallback
-      ttsResponse = await env.AI.run('@cf/deepgram/aura-2-en', { text: reply });
+      ttsResponse = await env.AI.run(MODELS.ttsFallback, { text: reply, lang: 'en' });
     }
     
     // Convert audio to base64 for JSON response
@@ -1532,7 +1535,7 @@ async function handleSpeechToText(request, env, corsHeaders) {
     const audioArray = [...new Uint8Array(audioBuffer)];
     
     // Call Whisper API - use large-v3-turbo for better accuracy
-    const result = await env.AI.run('@cf/openai/whisper-large-v3-turbo', {
+    const result = await env.AI.run(MODELS.stt, {
       audio: audioArray
     });
     
@@ -1674,7 +1677,7 @@ async function handleVoiceCallProcess(request, env, corsHeaders) {
     const audioArray = [...new Uint8Array(audioBuffer)];
     
     // Step 1: Speech to Text (Whisper Large v3 Turbo) - Realtime optimized
-    const sttResult = await env.AI.run('@cf/openai/whisper-large-v3-turbo', {
+    const sttResult = await env.AI.run(MODELS.stt, {
       audio: audioArray
     });
     
@@ -1727,20 +1730,12 @@ async function handleVoiceCallProcess(request, env, corsHeaders) {
     const isVip = session ? await checkUserVipStatus(session.user_id, env) : false;
     
     // Select model - VIP gets better model even in voice calls
-    const modelName = isVip
-      ? '@cf/meta/llama-3.3-70b-instruct-fp8-fast'
-      : '@cf/meta/llama-3.2-3b-instruct';
-    
+    const modelName = isVip ? MODELS.llmVip : MODELS.llmFree;
+
     const maxTokens = isVip ? 120 : 80;  // Shorter for voice, but VIP gets more
-    
+
     // Generate response - Realtime optimized with lower latency
-    const llmResult = await env.AI.run(modelName, {
-      messages,
-      max_tokens: maxTokens,
-      temperature: 0.7
-    });
-    
-    const aiResponse = llmResult.response || llmResult.content || '';
+    const aiResponse = await runChatLLM(env, { modelName, messages, maxTokens });
     
     // Step 3: Text to Speech - Realtime optimized with character-specific voice
     const cleanResponse = aiResponse.replace(/\*([^*]+)\*/g, '').trim();
@@ -1751,7 +1746,7 @@ async function handleVoiceCallProcess(request, env, corsHeaders) {
     
     if (hasChinese) {
       // Chinese - use melotts
-      ttsResult = await env.AI.run('@cf/myshell-ai/melotts', {
+      ttsResult = await env.AI.run(MODELS.ttsZh, {
         text: cleanResponse,
         lang: 'zh'
       });
@@ -1764,7 +1759,7 @@ async function handleVoiceCallProcess(request, env, corsHeaders) {
         luna: 'stella'
       };
       const speaker = speakerMap[characterId] || 'luna';
-      ttsResult = await env.AI.run('@cf/deepgram/aura-1', {
+      ttsResult = await env.AI.run(MODELS.ttsEn, {
         text: cleanResponse,
         speaker: speaker
       });
